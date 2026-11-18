@@ -1,0 +1,361 @@
+problem: Audit schema alignment, structural/constant columns, non-ID duplicates, and
+  domain/temporal sparsity across TrainingWiDS2021.csv and UnlabeledWiDS2021.csv.
+inquiries:
+- id: I1
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Excluding diabetes_mellitus, Train and Unlabeled share an identical 180-column
+      predictor schema with >=3 structural drop columns and >=1 near-constant (>=99%).
+  methodology:
+    technique: Full-table predictor schema comparison, cardinality audit, and modal
+      dominance
+    parameters:
+      constant_nunique_max: 1
+      near_constant_mode_share_min: 0.99
+    assumptions:
+    - '''NA'' and empty fields denote missing observations in both CSVs.'
+    missing_data_policy: Explicit null tally; nunique and mode_share over non-null
+      rows.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: 'schema_aligned=True, |C_const_id|=3 ([''Unnamed: 0'', ''encounter_id'',
+      ''readmission_status'']), |C_near_const|=3 ([''aids'', ''leukemia'', ''lymphoma''])'
+    formula: schema_aligned AND |C_const_id| >= 3 AND |C_near_const| >= 1
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - All 130,157 Train rows and 10,234 Unlabeled rows; isolate hospital/icu IDs
+  verdict:
+    outcome: 'TRUE'
+    'true': schema_aligned AND |C_const_id| >= 3 AND |C_near_const| >= 1
+    'false': NOT schema_aligned OR (|C_const_id|==0 AND |C_near_const|==0)
+    inconclusive: Partial structural/near-constant counts
+  action:
+    on_true: 'Lock [''Unnamed: 0'', ''encounter_id'', ''readmission_status''] drop
+      list; Spawns #I1.1; Ref to #I2.'
+    on_false: 'Spawns #I1.1 to diagnose schema mismatch.'
+    on_inconclusive: 'Spawns #I1.1 and Ref to #I2.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 'Unnamed: 0 .. diabetes_mellitus (181 cols)'
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'
+- id: I1.1
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I1. DataDictionaryWiDS2021.csv has schema/metadata drift vs
+      CSVs while hospital_id has zero overlap between Train and Unlabeled.'
+  methodology:
+    technique: Symmetric dictionary-CSV reconciliation and facility ID set intersections
+    parameters:
+      id_columns:
+      - hospital_id
+      - icu_id
+      - encounter_id
+    assumptions:
+    - Dictionary numeric fields parse cleanly as float64.
+    missing_data_policy: Nulls excluded from coercion checks and ID set intersections.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: 'symdiff=2 (dict_only=[''icu_admit_type''], csv_only=[''Unnamed: 0'']),
+      mismatches=13, hospital_overlap=0, icu_overlap=264, encounter_overlap=0'
+    formula: '|(Dict \ CSV) U (CSV \ Dict)|; |Train[id] & Test[id]|'
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - All 181 DataDictionary rows vs Train/Unlabeled CSVs
+  verdict:
+    outcome: 'TRUE'
+    'true': symdiff >= 2 AND mismatches >= 1 AND hospital_overlap == 0
+    'false': symdiff == 0 AND mismatches == 0 AND hospital_overlap > 0
+    inconclusive: Mixed drift and ID overlap
+  action:
+    on_true: 'Update docs/data_dictionary.md and lock StratifiedGroupKFold -> Ref
+      to #I4.'
+    on_false: 'Confirm dictionary fidelity -> Ref to #I4.'
+    on_inconclusive: 'Log partial overlap in stage1_schema_sparsity.md -> Ref to #I4.'
+  source:
+    file: data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860);
+      data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - encounter_id
+    - bmi
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'
+- id: I2
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: Excluding structural IDs, constants, and target, TrainingWiDS2021.csv has
+      < 9 exact 175-col clinical duplicates, showing AutoViz's 9 duplicates came from
+      column reduction.
+  methodology:
+    technique: Progressive row-duplication profiling across F_clinical and pruned
+      subsets
+    parameters:
+      duplicate_keep: first
+    assumptions:
+    - NaN == NaN positional matching across scopes.
+    missing_data_policy: NaN preserved across raw scopes.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: F_clinical=8, F_facility=8, F_80pct=8, F_50pct=8, F_autoviz_pre_dq=8
+    formula: sum(df[scope].duplicated(keep='first'))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows in TrainingWiDS2021.csv
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': N_dup_clinical < 9 AND 9 in raw pruned scopes
+    'false': N_dup_clinical >= 9
+    inconclusive: N_dup_clinical < 9 AND 9 not reproduced without AutoViz trace
+  action:
+    on_true: 'Retain clinical rows, Spawns #I2.1, Ref to #I3.'
+    on_false: 'Audit duplicate cluster and deduplicate; Spawns #I2.1, Ref to #I3.'
+    on_inconclusive: 'Spawns #I2.2 to trace AutoViz 30-col FixDQ duplicates; Spawns
+      #I2.1, Ref to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictor columns)
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'
+- id: I2.1
+  status: 'FALSE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I2. Train contains >= 10 within-hospital demographic near-duplicate
+      pairs (>=90% agreement) or >= 1 cross-split F_clinical collision with Unlabeled.'
+  methodology:
+    technique: Cross-split row hashing and within-hospital demographic blocking
+    parameters:
+      min_mutually_non_null_cols: 30
+      agreement_min: 0.9
+    assumptions:
+    - Repeated hospital stays preserve age, gender, ethnicity, height, weight.
+    missing_data_policy: Score agreement over mutually non-null predictors.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: N_cross_exact=0, N_near_dup_transfer=0
+    formula: cross_exact_matches; within_hospital_near_dup_pairs
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows excluding exact 175-col dups
+  verdict:
+    outcome: 'FALSE'
+    'true': N_cross_exact >= 1 OR N_near_dup_transfer >= 10
+    'false': N_cross_exact == 0 AND N_near_dup_transfer == 0
+    inconclusive: N_cross_exact == 0 AND 1 <= N_near_dup_transfer < 10
+  action:
+    on_true: 'Enforce StratifiedGroupKFold(groups=hospital_id) -> Ref to #I4.'
+    on_false: 'Confirm zero cross-split collisions or transfer pairs -> Ref to #I3.'
+    on_inconclusive: 'Log 1-9 pairs in stage1_duplicate_audit.csv -> Ref to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - age
+    - gender
+    - ethnicity
+    - height
+    - weight
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'
+- id: I2.2
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I2. AutoViz''s 9 flagged duplicates arise strictly after AutoViz
+      caps predictors to <= 30 columns rather than existing as 9 excess copies in
+      175 cols.'
+  methodology:
+    technique: Direct trace of AutoViz classify_print_vars 30-predictor reduction
+    parameters:
+      max_cols_analyzed: 30
+    assumptions:
+    - AutoViz capped predictors to 30 before counting duplicate rows.
+    missing_data_policy: Exact NaN positional matching across AutoViz dft and raw
+      175 cols.
+    script_ref: scripts/stage1_autoviz_dup_trace.py
+  evidence:
+    type: N
+    metric: autoviz_dft_shape=(130157, 31), dft_dup_keep_first=9, dft_dup_keep_false=10,
+      raw_175_keep_first=8, raw_175_keep_false=9, dup_row_indices=[89589, 89608, 89616,
+      89629, 89637, 89659, 89662, 89664, 89665, 89697], encounter_ids=[159417, 244601,
+      150518, 264918, 225543, 147789, 234525, 232838, 189191, 197188]
+    formula: count(dft.duplicated(keep='first')) vs count(raw_175.duplicated(keep='first'))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows in TrainingWiDS2021.csv
+  verdict:
+    outcome: 'TRUE'
+    'true': autoviz_traced_dup_count == 9 AND N_dup_clinical < 9
+    'false': autoviz_traced_dup_count != 9
+    inconclusive: AutoViz trace fails or subsamples
+  action:
+    on_true: 'Confirm 9th dup is a 30-col projection collision; audit 8 copies ->
+      Ref to #I3.'
+    on_false: 'Rely on deterministic F_clinical deduplication audit -> Ref to #I3.'
+    on_inconclusive: 'Rely on deterministic F_clinical deduplication audit -> Ref
+      to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - age
+    - height
+    - pre_icu_los_days
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    - fio2_apache
+    - map_apache
+    - pao2_apache
+    - ph_apache
+    - urineoutput_apache
+    - d1_diasbp_invasive_max
+    - d1_diasbp_invasive_min
+    - d1_mbp_invasive_max
+    - d1_mbp_invasive_min
+    - d1_resprate_min
+    - d1_spo2_max
+    - d1_spo2_min
+    - d1_sysbp_invasive_max
+    - d1_sysbp_invasive_min
+    - d1_temp_max
+    - h1_diasbp_invasive_max
+    - h1_mbp_invasive_max
+    - h1_resprate_max
+    - h1_resprate_min
+    - h1_spo2_max
+    - h1_spo2_min
+    - h1_sysbp_invasive_max
+    - d1_glucose_min
+    - d1_potassium_max
+    - d1_potassium_min
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage1_autoviz_dup_trace.py
+      timestamp: '2026-11-19T06:36:37+08:00'
+- id: I3
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Across 64 matched (h1_, d1_) pairs, h1_ features exhibit >= 5.0 pp higher
+      median missingness than d1_ twins, concentrating >= 60% of >50%-missing cols
+      in h1_/blood gas.
+  methodology:
+    technique: Domain/window taxonomy mapping and one-sided paired Wilcoxon signed-rank
+      test
+    parameters:
+      matched_pairs_n: 64
+      alpha: 0.01
+      alternative: greater
+    assumptions:
+    - Each h1_<stem> pairs 1-to-1 with d1_<stem>.
+    missing_data_policy: Explicit null rate over full Train and Unlabeled tables.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: n_pairs=64, med_delta_tr=17.77pp (p=3.772e-12), conc_tr=71.23%, med_delta_te=18.82pp
+      (p=3.772e-12), conc_te=70.27%
+    formula: median(miss(h1)-miss(d1)); |{c in (h1_ U blood_gas):miss>50%}| / |{c:miss>50%}|
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - 64 matched (h1_, d1_) pairs and all 180 shared predictors
+  verdict:
+    outcome: 'TRUE'
+    'true': median_delta >= 5.0 AND p < 0.01 AND conc >= 60% in BOTH splits
+    'false': median_delta <= 0 OR p >= 0.05 OR conc < 40% in EITHER split
+    inconclusive: Borderline concentration or p-value
+  action:
+    on_true: 'Reject blind >80%-null dropping; retain h1_/blood-gas for MNAR testing;
+      Spawns #I3.1.'
+    on_false: 'Audit alternative sparsity drivers and Spawns #I3.1.'
+    on_inconclusive: 'Inspect borderline pairs and Spawns #I3.1.'
+  source:
+    file: data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860);
+      data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 h1_* and 64 d1_* columns; labs blood gas
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'
+- id: I3.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I3. At least 10 predictors shift >= 5.0 pp in missingness between
+      Train and Unlabeled or reach >= 95.0% null in UnlabeledWiDS2021.csv.'
+  methodology:
+    technique: Cross-split column missingness delta and Spearman rank-order stability
+    parameters:
+      abs_shift_pp: 5.0
+      extreme_null_pct: 95.0
+    assumptions:
+    - Disjoint hospitals may use different EHR lab order panels.
+    missing_data_policy: Explicit null percentage across all rows in both CSVs.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: shifted_ge5pp=2, unlabeled_ge95pct=0, spearman_rho=0.9955, max_shift=6.47pp
+    formula: count(|miss_tr - miss_te| >= 5.0); Spearman(miss_tr, miss_te)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 180 shared predictors across Train and Unlabeled
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': shifted_ge5pp >= 10 OR unlabeled_ge95pct >= 1
+    'false': shifted_ge5pp == 0 AND unlabeled_ge95pct == 0 AND rho >= 0.95
+    inconclusive: 1-9 shifted predictors without >=95% null columns
+  action:
+    on_true: 'Escalate shifted columns to Stage 2 Adversarial Validation -> Ref to
+      #I5.'
+    on_false: 'Confirm missingness stability -> Ref to #I4.'
+    on_inconclusive: 'Escalate the 2 shifted cols (bmi, weight) to Stage 2 shift check
+      -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 180 shared predictors
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: '2026-11-19T06:36:10+08:00'

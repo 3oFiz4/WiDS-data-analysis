@@ -1,0 +1,12 @@
+dd_category,temporal_window,n_columns,mean_miss_train,median_miss_train,mean_miss_test,median_miss_test,n_gt50_train,n_gt80_train
+labs blood gas,h1_first_hour,8,83.813575,82.7904,82.729125,81.8253,8,8
+labs,h1_first_hour,30,79.68695333333334,80.6641,79.27887333333334,80.3205,30,18
+labs blood gas,d1_first_24h,8,66.5767,65.02455,64.36875,63.00565,8,0
+labs,d1_first_24h,30,25.12186666666667,12.8245,25.036806666666667,13.6506,8,0
+vitals,h1_first_hour,26,24.49213076923077,8.7049,26.295453846153844,11.2859,6,6
+APACHE covariate,apache_24h_worst,28,24.317014285714286,8.18515,24.183396428571427,9.18995,7,0
+vitals,d1_first_24h,26,17.570915384615382,1.247,17.381707692307693,1.4462,6,0
+demographic,static_baseline,14,2.7499214285714286,0.11755,3.6230857142857147,0.02445,0,0
+APACHE comorbidity,static_baseline,7,0.0,0.0,0.0,0.0,0,0
+identifier,static_baseline,2,0.0,0.0,0.0,0.0,0,0
+csv_index_artifact,static_baseline,1,0.0,0.0,0.0,0.0,0,0
