@@ -8,6 +8,7 @@ RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
 KAGGLE_DATASET_SLUG = "owner/dataset-slug"
+KAGGLE_COMPETITION_SLUG = "widsdatathon2021"
 
 # Optional SHA-256 checksums for downloaded raw files: {"filename.csv": "hex_digest"}
 EXPECTED_CHECKSUMS: dict[str, str] = {}
