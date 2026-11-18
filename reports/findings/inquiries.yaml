@@ -1404,3 +1404,312 @@ inquiries:
     extraction:
       script: scripts/stage4_integrity_and_missingness.py
       timestamp: '2026-11-19T07:04:13+08:00'
+- id: I14
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: Across 16 tri-window analytes, median |Spearman rho(d1_max, apache)| >=
+      0.75, yet dropping h1_ or 15 _apache twins reduces 5-fold SGKF AUC by >= 0.001.
+  methodology:
+    technique: Cross-window Spearman correlations and window-ablation 5-fold SGKF
+      CV
+    parameters:
+      tri_window_analytes: 16
+      apache_twins: 15
+    assumptions:
+    - 80k+ h1_ and 250k+ _apache entries outside d1_ add distinct signal.
+    missing_data_policy: Pairwise complete Spearman; native NaN in HGB.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: med_rho_d1_ap=0.8369, auc_base=0.84957, auc_no_h1=0.84946 (drop=+0.00011),
+      auc_no_ap=0.84901 (drop=+0.00056)
+    formula: auc_sanitized - auc_no_window
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': med_rho >= 0.75 AND (drop_h1 >= 0.001 OR drop_ap >= 0.001)
+    'false': med_rho < 0.60 AND drop_h1 <= 0 AND drop_ap <= 0
+    inconclusive: Partial correlation or smaller drop
+  action:
+    on_true: 'Retain multi-window predictors; Spawns #I14.1; Ref to #I15.'
+    on_false: 'Prune redundant window in #I14.1; Ref to #I15.'
+    on_inconclusive: 'Test granular SULO pruning in #I14.1; Ref to #I15.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 h1_ cols
+    - 64 d1_ cols
+    - 15 _apache twins
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'
+- id: I14.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I14 and tests AutoViz SULO pruning. Greedy correlation pruning
+      at |rho| >= 0.80 degrades 5-fold SGKF HGB AUC by >= 0.002.'
+  methodology:
+    technique: Target-AUC-prioritized greedy Spearman pruning at 0.90 and 0.80
+    parameters:
+      thresholds:
+      - 0.9
+      - 0.8
+    assumptions:
+    - Correlated min/max/window twins carry joint tree interaction signal.
+    missing_data_policy: Pairwise Spearman over numeric predictors; native NaN in
+      HGB.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: n_kept_r90=118, auc_r90=0.84948 (Δ=-0.00009); n_kept_r80=92, auc_r80=0.84790
+      (Δ=-0.00167)
+    formula: auc_sulo - auc_sanitized_base
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': delta_r80 <= -0.002
+    'false': delta_r80 >= 0.0 AND delta_r90 >= 0.0
+    inconclusive: Minor delta in (-0.002, 0.0)
+  action:
+    on_true: 'Reject SULO |rho|>=0.80 pruning for tree models -> Ref to #I15.'
+    on_false: 'Adopt SULO pruned subset for Stage 6 -> Ref to #I15.'
+    on_inconclusive: 'Keep full sanitized set for GBDT; benchmark pruned for linear
+      -> Ref #I15.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical (175 predictors)
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'
+- id: I15
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Across Top-25 + clinical watchlist predictors, zero originate post-24h
+      or hit AUC >= 0.90, and all predictors with AUC >= 0.55 generalize cleanly across
+      folds.
+  methodology:
+    technique: Timeline classification, 5-fold univariate stability, and arf coherence
+    parameters:
+      max_fold_std: 0.04
+      min_fold_auc: 0.5
+      leak_auc: 0.9
+    assumptions:
+    - Valid clinical signals generalize without fold-direction flips.
+    missing_data_policy: Native NaN preserved in univariate fold checks.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: n_post_24h=0, n_leak_ge90=0, n_unstable=0, arf1_creat_med=5.80 vs arf0_creat_med=0.94
+    formula: count(mean_auc >= 0.55 AND (min_fold < 0.50 OR std_fold > 0.04))
+  condition:
+    timeframe: Static WiDS Datathon 2021 pre-ICU through 24h ICU
+    filters:
+    - Top-25 F_clinical union 8 watchlist predictors
+  verdict:
+    outcome: 'TRUE'
+    'true': n_post_24h == 0 AND n_leak_ge90 == 0 AND n_unstable == 0
+    'false': n_post_24h >= 1 OR n_leak_ge90 >= 1
+    inconclusive: Hospital-unstable proxy features detected
+  action:
+    on_true: 'Certify audited predictors as leak-free; Spawns #I15.1; Ref to #I16.'
+    on_false: 'Quarantine leaky predictors; Spawns #I15.1; Ref to #I16.'
+    on_inconclusive: 'Inspect unstable proxies in stage5_leakage_proxy_audit.csv;
+      Spawns #I15.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_glucose_max
+    - glucose_apache
+    - d1_glucose_min
+    - h1_glucose_max
+    - h1_glucose_min
+    - apache_3j_diagnosis
+    - apache_2_diagnosis
+    - bmi
+    - d1_bun_max
+    - d1_creatinine_max
+    - bun_apache
+    - weight
+    - d1_bun_min
+    - d1_creatinine_min
+    - creatinine_apache
+    - age
+    - d1_potassium_max
+    - d1_sodium_min
+    - d1_hemaglobin_max
+    - d1_hemaglobin_min
+    - d1_hematocrit_max
+    - d1_sysbp_noninvasive_max
+    - sodium_apache
+    - d1_sysbp_max
+    - d1_hematocrit_min
+    - pre_icu_los_days
+    - elective_surgery
+    - icu_stay_type
+    - arf_apache
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'
+- id: I15.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I15. Early ICU-door + 1h predictors achieve SGKF AUC >= 0.78,
+      and adding 28 T3_apache summary covariates on top of 24h vitals/labs adds <
+      0.015.'
+  methodology:
+    technique: 4-horizon temporal-access cumulative grouped CV evaluation
+    parameters:
+      horizons:
+      - T0
+      - T0+T1
+      - T0+T1+T2
+      - All_24h
+    assumptions:
+    - Isolates incremental APACHE coding value over raw first-24h labs/vitals.
+    missing_data_policy: Native NaN preserved across all 4 horizons.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: T0=0.66578, T0_T1=0.75777, T0_T1_T2=0.84453, All_24h=0.84957, delta_apache_t3=+0.00504
+    formula: auc_all_24h - auc_T0_T1_T2
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': auc_T0_T1 >= 0.78 AND delta_apache_t3 < 0.015
+    'false': auc_T0_T1 < 0.72 OR delta_apache_t3 >= 0.030
+    inconclusive: Intermediate early AUC or APACHE uplift
+  action:
+    on_true: 'Confirm strong early physiology signal independent of APACHE -> Ref
+      to #I16.'
+    on_false: 'Audit T3_apache drivers -> Ref to #I16.'
+    on_inconclusive: 'Log temporal horizon progression in stage5 summary -> Ref to
+      #I16.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical by temporal tier
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'
+- id: I16
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Cumulative clean domain FE (Families A-D: cleaning, glycemic dynamics,
+      clinical ratios, APACHE3j hierarchy+TE+panel miss) lifts SGKF AUC >= +0.0030
+      (>=4/5 folds) and cuts Log-Loss >= 0.0010.'
+  methodology:
+    technique: Stepwise cumulative FE ablation (Base -> +AB -> +ABC -> +ABCD) on SGKF
+    parameters:
+      te_smoothing_m: 20.0
+      n_new_features: 34
+    assumptions:
+    - Safe division and nested inner OOF TE prevent ratio/encoding leakage.
+    missing_data_policy: Preserve NaN when denominator <= 0 or component is missing.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: san_A=0.84957 (ll=0.37667), AB=0.85114, ABC=0.85143, ABCD=0.85344 (ll=0.37267),
+      Δauc=+0.00387, Δll=-0.00400, folds=5/5, top_eng=[('d1_glucose_range', 0.02551),
+      ('apache_3j_diagnosis_te', 0.00546), ('bmi_calc', 0.00277), ('d1_glucose_mid',
+      0.00112), ('glucose_apache_vs_d1_max', 0.00112)]
+    formula: auc_eng_AD - auc_sanitized; logloss_eng_AD - logloss_sanitized
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: 'TRUE'
+    'true': delta_auc >= 0.0030 AND folds >= 4 AND delta_ll <= -0.0010
+    'false': delta_auc <= 0.0 OR folds <= 1
+    inconclusive: Positive lift below +0.0030 or partial fold consistency
+  action:
+    on_true: 'Promote Families A-D into Stage 6 production pipeline; Spawns #I16.1.'
+    on_false: 'Prune net-negative engineering families; Spawns #I16.1.'
+    on_inconclusive: 'Retain individually positive FE families for Stage 6; Spawns
+      #I16.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical + Families A-D engineered features
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'
+- id: I16.1
+  status: 'FALSE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I16. Fold-safe clinical-stratum z-scores (age_bin x icu_type)
+      or unsupervised within-hospital covariate centering lifts eng_AD SGKF AUC >=
+      +0.0015.'
+  methodology:
+    technique: 2-arm contextual aggregation ablation on top of eng_AD
+    parameters:
+      stratum: age_bin x icu_type
+      min_hospital_n: 5
+    assumptions:
+    - Target-free covariate centering generalizes across unseen hospitals.
+    missing_data_policy: NaN when hospital n < 5 or component missing.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: eng_AD=0.85344, stratum_z=0.85321 (Δ=-0.00023), hosp_cov_rel=0.85266 (Δ=-0.00077),
+      both=0.85248
+    formula: max(auc_stratum_z, auc_hosp_cov_rel) - auc_eng_AD
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: 'FALSE'
+    'true': max(delta_stratum, delta_hrel) >= 0.0015
+    'false': delta_stratum <= 0.0 AND delta_hrel <= 0.0
+    inconclusive: Modest positive lift in (0, 0.0015)
+  action:
+    on_true: Include winning contextual arm in Stage 6 baseline pipeline -> Stage
+      6.
+    on_false: Reject contextual group aggregations -> Proceed Stage 6 with eng_AD.
+    on_inconclusive: Test positive contextual arm as Stage 6 ablation -> Proceed Stage
+      6.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - eng_AD matrix
+    - hospital_id
+    - age
+    - icu_type
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: '2026-11-19T07:17:22+08:00'

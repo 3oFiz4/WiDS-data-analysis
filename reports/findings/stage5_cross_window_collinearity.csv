@@ -1,0 +1,17 @@
+analyte,d1_col,h1_col,apache_col,rho_d1_h1,rho_d1_apache,rho_h1_apache
+albumin,d1_albumin_max,h1_albumin_max,albumin_apache,0.9482,0.9513,0.8973
+bilirubin,d1_bilirubin_max,h1_bilirubin_max,bilirubin_apache,0.9513,0.9896,0.9346
+bun,d1_bun_max,h1_bun_max,bun_apache,0.9714,0.9916,0.9626
+creatinine,d1_creatinine_max,h1_creatinine_max,creatinine_apache,0.9671,0.9779,0.951
+glucose,d1_glucose_max,h1_glucose_max,glucose_apache,0.7821,0.8203,0.7391
+heartrate,d1_heartrate_max,h1_heartrate_max,heart_rate_apache,0.7901,0.8523,0.745
+hematocrit,d1_hematocrit_max,h1_hematocrit_max,hematocrit_apache,0.9506,0.9191,0.869
+mbp,d1_mbp_max,h1_mbp_max,map_apache,0.6288,0.4866,0.4735
+paco2,d1_arterial_pco2_max,h1_arterial_pco2_max,paco2_apache,0.8873,0.8215,0.7231
+pao2,d1_arterial_po2_max,h1_arterial_po2_max,pao2_apache,0.82,0.6866,0.5816
+ph,d1_arterial_ph_max,h1_arterial_ph_max,ph_apache,0.6427,0.7416,0.6566
+resprate,d1_resprate_max,h1_resprate_max,resprate_apache,0.598,0.6217,0.4811
+sodium,d1_sodium_max,h1_sodium_max,sodium_apache,0.8483,0.8683,0.8588
+temp,d1_temp_max,h1_temp_max,temp_apache,0.4569,0.3538,0.62
+wbc,d1_wbc_max,h1_wbc_max,wbc_apache,0.9196,0.95,0.878
+oxygenation,d1_pao2fio2ratio_min,h1_pao2fio2ratio_min,fio2_apache,0.8916,-0.501,-0.391

@@ -178,17 +178,41 @@ I only assume these methods below from a single glimpse, and these methods origi
 
   > **#I13.1 (INCONCLUSIVE)**: Splitting `apache_3j_diagnosis` into `major + system + sub` + OOF smoothed TE lifted diagnosis-only AUC from `0.63872 -> 0.64564` (`Δ = +0.00692`) and lifted full 175-col grouped HGB AUC from `0.84963 -> 0.85165` (`Δ = +0.00202`).
 
-- [ ] **Collinearity, Redundancy & Cross-Window Signal Analysis** (`h1_` vs. `d1_` vs. `_apache`)
+- [x] **Collinearity, Redundancy & Cross-Window Signal Analysis** (`h1_` vs. `d1_` vs. `_apache`)
 
-> AutoViz's SULO step already reduced `150` numeric predictors down to `73` due to high correlation. Quantifying Pearson/Spearman/Phik/mutual-information redundancy across `h1_`, `d1_`, and `_apache` versions of the same analyte (especially `glucose_apache`, `d1_glucose_max/min`, `h1_glucose_max/min`) identifies which window carries unique predictive signal vs. noise.
+> **#I14 (INCONCLUSIVE) & #I14.1 (INCONCLUSIVE)**: Across `16` tri-window analytes, median `|Spearman rho(d1_max, apache)| = 0.8369` (`bun=0.9916`, `bilirubin=0.9896`, down to `temp=0.3538`, `mbp=0.4866`). Dropping `h1_` (`-0.00011`) or `15` `_apache` twins (`-0.00056`) hurts CV slightly, and aggressive AutoViz-style SULO pruning at `|rho| >= 0.80` (`93` cols) loses `-0.00167` ROC-AUC ([stage5_cross_window_collinearity.csv](../reports/findings/stage5_cross_window_collinearity.csv)).
 
-- [ ] **Target Leakage & Clinical Proxy Audit**
+  - [x] **[I14] Sub-Analysis: Cross-Window Analyte Collinearity & Window-Ablation CV Audit**
 
-> Glucose-related labs (`d1_glucose_max`, `glucose_apache`, `h1_glucose_max`), `arf_apache`, `creatinine_apache`, `bmi`, and `age` are clinically tied to diabetes, whereas some APACHE/comorbidity or admission fields could act as post-hoc or coding proxies. Auditing top mutual-information features against clinical timeline (first-24h ICU data) ensures all features are legitimately available at prediction time.
+  > **#I14 (INCONCLUSIVE)**: Verified multi-window retention—dropping `h1_` (`0.84946`) or `_apache` twins (`0.84901`) slightly degrades `sanitized_base_A` (`0.84957`).
 
-- [ ] **Feature Engineering & Domain Ratio Exploration**
+  - [no] **[I14.1] Sub-Analysis: Apply Aggressive `|rho| >= 0.80` SULO Pruning for GBDT Models**
 
-> Beyond raw `min`/`max` columns, clinical ratios and deltas—such as `d1_glucose_max - d1_glucose_min` (glycemic variability), `h1_` vs. `d1_` deltas, `bun / creatinine` ratio, `invasive` monitoring indicator, missingness count per patient, and hospital-level/ICU-level aggregations (computed strictly out-of-fold)—can capture non-linear physiological stress patterns missed by single-column splits.
+  > **#I14.1 (INCONCLUSIVE)**: Rejected (`- [no]`) `|rho| >= 0.80` pruning (`93` cols, `0.84790`, `Δ=-0.00167`) for gradient boosting; `|rho| >= 0.90` (`119` cols, `0.84948`, `Δ=-0.00009`) remains a viable parsimonious benchmark for linear models.
+
+- [x] **Target Leakage & Clinical Proxy Audit**
+
+> **#I15 (TRUE) & #I15.1 (INCONCLUSIVE)**: Audited Top-25 + `8` watchlist proxies (`pre_icu_los_days`, `elective_surgery`, `icu_stay_type`, `apache_3j_diagnosis`, `glucose_*`, `arf_apache`). Found `0` post-24h predictors, `0` single-feature `AUC >= 0.90` leaks, and `0` fold-unstable predictors (all fold stds `<= 0.00972`; `arf_apache=1` median creatinine `5.80` vs `0.94`; [stage5_leakage_proxy_audit.csv](../reports/findings/stage5_leakage_proxy_audit.csv)).
+
+  - [x] **[I15] Sub-Analysis: Prediction-Time Timeline & Cross-Hospital Fold Stability Audit**
+
+  > **#I15 (TRUE)**: All audited predictors generalize stably across all 5 disjoint hospital folds (`std <= 0.00972`, `min fold AUC >= 0.54` when `mean >= 0.55`).
+
+  - [x] **[I15.1] Sub-Analysis: Temporal Access Horizon Ablation (`T0 Door` -> `1h` -> `24h No-APACHE` -> `All 24h`)**
+
+  > **#I15.1 (INCONCLUSIVE)**: Grouped SGKF AUC progresses `T0_door=0.66578` -> `T0+T1_1h=0.75777` -> `T0+T1+T2_24h=0.84453` -> `All_24h=0.84957` (`Δ_apache_t3 = +0.00504`).
+
+- [x] **Feature Engineering & Domain Ratio Exploration** *(Note: `bodysystem_unified` omitted because `apache_*_bodysystem` does not exist in WiDS 2021)*
+
+> **#I16 (TRUE) & #I16.1 (FALSE)**: Cumulative domain FE lifted 5-fold SGKF ROC-AUC from `sanitized_base_A = 0.84957` (`LogLoss=0.37667`) -> `fe_AB_glucose = 0.85114` -> `fe_ABC_ratios = 0.85143` -> **`fe_ABCD_hierarchy_te_miss = 0.85344`** (`Δ_AUC = +0.00387`, `Δ_LL = -0.00400`, **`5/5` folds**), led by `d1_glucose_range` (`perm_imp=0.02551`), `apache_3j_diagnosis_te` (`0.00546`), and `bmi_calc` (`0.00277`) ([stage5_feature_engineering_cv.csv](../reports/findings/stage5_feature_engineering_cv.csv)).
+
+  - [x] **[I16] Sub-Analysis: Stepwise Domain Feature Engineering CV Lift (`Families A-D`)**
+
+  > **#I16 (TRUE)**: Every engineering family (`A` cleaning/swap, `B` glycemic dynamics, `C` clinical ratios, `D` APACHE3j hierarchy + nested OOF TE + panel miss counts) contributed monotonic CV AUC and Log-Loss gains.
+
+  - [no] **[I16.1] Sub-Analysis: Clinical-Stratum (`age_bin x icu_type`) & Hospital-Covariate Relative Aggregations**
+
+  > **#I16.1 (FALSE)**: Rejected (`- [no]`)—adding `stratum_z` (`0.85321`, `Δ=-0.00023`) or unsupervised `hosp_cov_rel` (`0.85266`, `Δ=-0.00077`) degraded `fe_ABCD` (`0.85344`).
 
 - [ ] **Baseline Model & Validation Pipeline Verification**
 
