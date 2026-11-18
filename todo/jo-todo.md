@@ -130,21 +130,53 @@ I only assume these methods below from a single glimpse, and these methods origi
 
 > **#I3.1 (INCONCLUSIVE)**: Missingness ranks are highly stable (`Spearman rho = 0.9955`, `0` test columns `>= 95%` missing), but `2` key anthropometric predictors shifted `>= 5.0 pp`: `bmi` (`3.45%` train vs `9.92%` test, `|Δ|=6.47 pp`) and `weight` (`2.66%` vs `8.87%`, `|Δ|=6.21 pp`), escalated to Stage 2 Adversarial Validation (`#I5`).
 
-- [ ] **Missingness Pattern & Informative Missingness (MNAR/MAR) Audit**
+- [x] **Missingness Pattern & Informative Missingness (MNAR/MAR) Audit**
 
-> `73` columns are >50% missing and `32` are >80% missing (e.g., `h1_bilirubin_min/max` ~92.1%, `h1_albumin_min/max` ~91.4%, `h1_lactate_min/max` ~91.0%), with only `21` columns 0% missing. In ICU data, missingness is rarely random—ordering a blood gas or `h1_` lactate reflects clinical suspicion. Testing correlation between missingness indicators (`isna()`) and `diabetes_mellitus` tells us whether to engineer missingness flags/counts before imputing.
+> **#I10 (TRUE) & #I10.1 (INCONCLUSIVE)**: Deduplicating `89` unique missingness masks yielded **`37`** significant MNAR/MAR masks (`BH q < 0.01`, `|Δ| >= 2.0 pp`), led by `glucose_apache` (`7.09%` missing vs `23.48%` present, `|Δ|=16.39 pp`) and `d1_glucose_max/min` (`6.47%` vs `22.65%`, `|Δ|=16.19 pp`), with `n_miss_total` vs DM `r = -0.0426` (`p=1.94e-53`). Native GBDT `NaN` splits capture nearly all MNAR signal (`native_raw=0.84963`, `native_counts=0.84967`, `imp_no_flags=0.84739`, `imp_flags=0.84881`, [stage4_missingness_mechanisms.csv](../reports/findings/stage4_missingness_mechanisms.csv)).
 
-- [ ] **Measurement-Method & Paired-Column Consistency Check** (`invasive` vs. `noninvasive`, `min` vs. `max`, `height`/`weight` vs. `bmi`)
+  - [x] **[I10] Sub-Analysis: Deduplicated Missingness-Mask MNAR/MAR Contingency & Burden Audit**
 
-> Many vitals appear in both invasive and noninvasive pairs (e.g., `d1_sysbp_invasive_max` vs. `d1_sysbp_noninvasive_max`) and `min`/`max` pairs. Auditing `min > max` violations, `bmi` vs. `weight / (height/100)^2` mismatches, and whether combining invasive/noninvasive into a unified reading preserves signal reduces collinearity and catches sensor/entry errors.
+  > **#I10 (TRUE)**: `37/89` deduplicated masks show significant target separation (`BH q < 0.01`, `|Δ| >= 2.0 pp`).
 
-- [ ] **Physiological Range & Impossible Value Audit (Outliers & Unit Errors)**
+  - [x] **[I10.1] Sub-Analysis: Missingness-Flag / Panel-Order Count Grouped-CV Ablation**
 
-> ICU EHR exports often contain sentinel values, negative/zero vitals, extreme lab spikes, or unit mix-ups (e.g., `height` in cm vs. m, `temp` in °F vs. °C, impossible `gcs_*` scores, negative `pre_icu_los_days`). Auditing min/max quantiles against clinical bounds from `DataDictionaryWiDS2021.csv` prevents extreme outliers from distorting linear/neural models or summary statistics.
+  > **#I10.1 (INCONCLUSIVE)**: Adding non-demographic panel missingness counts yields `+0.00004` over `native_raw` (`0.84967` vs `0.84963`) while explicit flags recover `+0.00142` under fold imputation (`0.84881` vs `0.84739`).
 
-- [ ] **Categorical Cardinality, Rare Levels & Encoding Strategy Audit** (`ethnicity`, `hospital_admit_source`, `icu_admit_source`, `icu_stay_type`, `icu_type`, `gender`, `apache_2_diagnosis`, `apache_3j_diagnosis`, `hospital_id`, `icu_id`)
+- [x] **Measurement-Method & Paired-Column Consistency Check** (`invasive` vs. `noninvasive`, `min` vs. `max`, `height`/`weight` vs. `bmi`)
 
-> String categoricals, numeric-coded diagnosis IDs (`apache_2_diagnosis`, `apache_3j_diagnosis`), and high-cardinality facility IDs (`hospital_id`, `icu_id`) require different handling. Checking unseen categories in `UnlabeledWiDS2021.csv`, rare-category frequencies, and target-encoding leakage risk ensures clean encoding without test-time failures.
+> **#I11 (TRUE) & #I11.1 (FALSE)**: Found **`1,683`** `min > max` inversions (`d1_hco3` `171` train + `14` test, `d1_albumin` `117+12`, `d1_temp` `95+0`), **`80,081`** `h1_` outside `d1_` instances, **`250,511`** `_apache` outside `d1_` instances, and **`2,274`** `bmi` >2% formula discrepancies (`0` recoverable null BMIs; [stage4_paired_consistency.csv](../reports/findings/stage4_paired_consistency.csv)).
+
+  - [x] **[I11] Sub-Analysis: 64 Min/Max Pairs, 64 `(h1_, d1_)` Bounds & BMI Formula Integrity Audit**
+
+  > **#I11 (TRUE)**: Confirmed `1,683` `min > max` violations and `80,081` / `250,511` cross-window deviations proving `h1_` and `_apache` carry non-redundant information beyond `d1_`.
+
+  - [no] **[I11.1] Sub-Analysis: Hypothesis That General BP Absorbs >=99% of Invasive/Non-Invasive BP Triplets**
+
+  > **#I11.1 (FALSE)**: Rejected (`- [no]`)—up to `17.52%` of invasive/noninvasive readings are unabsorbed by general BP and invasive BP averages `+3.17 mmHg` higher, though pruning the 24 sub-columns + `has_invasive_bp` kept grouped AUC nearly unchanged (`0.84962` vs `0.84963`).
+
+- [x] **Physiological Range & Impossible Value Audit (Outliers & Unit Errors)**
+
+> **#I12 (TRUE) & #I12.1 (TRUE)**: Confirmed **`9`** DataDictionary unit mismatches (`5` `hematocrit` `%` vs `Fraction` and `4` `pao2fio2ratio` ratio vs `Fraction`) and **`6`** extreme-tail columns `>=0.1%` ([stage4_physiological_outliers.csv](../reports/findings/stage4_physiological_outliers.csv)); sanitizing sentinels/extremes to `NaN` improved grouped CV (`0.84963 -> 0.84974`, `Δ = +0.00011`).
+
+  - [x] **[I12] Sub-Analysis: Full-Table Quantile Tail, Unit-Scale Mismatch & Sanitized-CV Audit**
+
+  > **#I12 (TRUE)**: Verified `hematocrit` must stay in `%` (`15.5–51.7`) and sanitizing hard sentinel/bound errors preserves/improves CV AUC (`+0.00011`).
+
+  - [x] **[I12.1] Sub-Analysis: Hospital-Sentinel Clustering Test on Zero-Coded Vitals & `age==0`**
+
+  > **#I12.1 (TRUE)**: `4/4` zero-coded columns show hospital clustering: `age==0` (`n=30`) is `80.0%` concentrated in top-5 hospitals (`10.0%` vs `21.97%` DM), and `d1_resprate_min==0` reaches `35.3%` in a single `n>=30` hospital (`h1_resprate_min` `29.9%`, `d1_heartrate_min` `25.0%`).
+
+- [x] **Categorical Cardinality, Rare Levels & Encoding Strategy Audit** (`ethnicity`, `gender`, `hospital_admit_source`, `icu_admit_source`, `icu_stay_type`, `icu_type`, `apache_2_diagnosis`, `apache_3j_diagnosis`)
+
+> **#I13 (TRUE) & #I13.1 (INCONCLUSIVE)**: Verified `apache_2_bodysystem` and `apache_3j_bodysystem` do **not** exist in WiDS 2021 (WiDS 2020 columns). Across the `8` realized categorical/diagnosis columns, found **`126`** rare levels (`n < 30`: `124` in `apache_3j_diagnosis`, `2` in `hospital_admit_source`) and **`2`** unseen test levels (`0.0195%` rows in `apache_3j_diagnosis`), with `0` whitespace/case collisions ([stage4_categorical_audit.csv](../reports/findings/stage4_categorical_audit.csv)).
+
+  - [x] **[I13] Sub-Analysis: 8-Column Categorical/Diagnosis Cardinality, Rare Levels & Unseen Test-Level Audit**
+
+  > **#I13 (TRUE)**: Confirmed unknown-safe encoding + rare-level handling is required for `apache_3j_diagnosis` (`401` train levels, `124` rare, `2` unseen in test).
+
+  - [x] **[I13.1] Sub-Analysis: APACHE III-J Decimal Hierarchy Decomposition & OOF Target-Encoding Benchmark**
+
+  > **#I13.1 (INCONCLUSIVE)**: Splitting `apache_3j_diagnosis` into `major + system + sub` + OOF smoothed TE lifted diagnosis-only AUC from `0.63872 -> 0.64564` (`Δ = +0.00692`) and lifted full 175-col grouped HGB AUC from `0.84963 -> 0.85165` (`Δ = +0.00202`).
 
 - [ ] **Collinearity, Redundancy & Cross-Window Signal Analysis** (`h1_` vs. `d1_` vs. `_apache`)
 

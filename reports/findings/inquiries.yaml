@@ -1011,3 +1011,396 @@ inquiries:
     extraction:
       script: scripts/stage3_signal_and_triage.py
       timestamp: '2026-11-19T06:53:14+08:00'
+- id: I10
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Across deduplicated non-trivial missingness masks in F_clinical, missingness
+      is MNAR/MAR wrt diabetes_mellitus (>= 10 masks with BH-FDR q < 0.01 & |Δ| >=
+      2.0 pp).
+  methodology:
+    technique: Deduplicated missingness-mask chi2 + BH-FDR and burden Spearman test
+    parameters:
+      fdr_alpha: 0.01
+      min_abs_diff_pp: 2.0
+    assumptions:
+    - Twin columns sharing masks reflect one underlying lab-order event.
+    missing_data_policy: Missingness evaluated directly via isna() indicator.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: 'n_unique_masks=89, k_mnar=37, r_tot_miss=-0.0426 (p=1.943e-53), top=[{''rep_column'':
+      ''glucose_apache'', ''abs_diff_pp'': 16.3886, ''bh_fdr_q'': 0.0}, {''rep_column'':
+      ''d1_glucose_max'', ''abs_diff_pp'': 16.1876, ''bh_fdr_q'': 7.257029131191072e-260},
+      {''rep_column'': ''apache_3j_diagnosis'', ''abs_diff_pp'': 15.3723, ''bh_fdr_q'':
+      4.944941914259304e-27}]'
+    formula: count(BH_q < 0.01 AND |P(y=1|miss)-P(y=1|present)| >= 2.0 pp)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows and 175 predictors with 30 <= n_null <= N-30
+  verdict:
+    outcome: 'TRUE'
+    'true': k_mnar >= 10 OR (k_mnar >= 3 AND p_tot < 0.001 AND |r_tot| >= 0.02)
+    'false': k_mnar == 0 AND (p_tot >= 0.05 OR |r_tot| < 0.01)
+    inconclusive: 1-9 significant missingness masks
+  action:
+    on_true: 'Confirm MNAR/MAR; export stage4_missingness_mechanisms.csv; Spawns #I10.1.'
+    on_false: 'Reject widespread MNAR; Spawns #I10.1.'
+    on_inconclusive: 'Inspect 1-9 significant masks; Spawns #I10.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I10.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I10. Explicit missingness flags/panel counts lift grouped HGB
+      AUC by >= +0.005 over imputed without flags (or >= +0.002 over native NaN).'
+  methodology:
+    technique: 4-arm missingness-representation ablation on 5-fold SGKF
+    parameters:
+      n_splits: 5
+      n_flags_added: 86
+    assumptions:
+    - Comparing imputed+flags vs imputed isolates pure missingness signal.
+    missing_data_policy: Imputers fit per fold; non-demographic counts omit shifted
+      demos.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: native_raw=0.84963, native_counts=0.84967 (Δ=+0.00004), imp_no_flags=0.84739,
+      imp_flags=0.84881 (Δ=+0.00142)
+    formula: auc_imp_flags - auc_imp_no_flags; auc_native_counts - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': delta_imp >= 0.005 OR delta_nat >= 0.002
+    'false': delta_imp <= 0.0 AND delta_nat <= 0.0
+    inconclusive: Modest positive lift below thresholds
+  action:
+    on_true: 'Retain non-demographic missingness counts/flags for Stage 5-6 -> Ref
+      to #I11.'
+    on_false: 'Rely on native tree NaN handling without extra flags -> Ref to #I11.'
+    on_inconclusive: 'Test missingness counts on Stage 6 Log-Loss/Brier -> Ref to
+      #I11.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I11
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Across 64 min/max pairs, 64 (h1_, d1_) bounds, and BMI formula checks in
+      Train and Test, >= 100 total structural violations or >= 1 min>max / h1>d1 violation
+      occur.
+  methodology:
+    technique: Algebraic invariant audit across min/max, h1/d1, apache/d1, and BMI
+    parameters:
+      tolerance_eps: 1.0e-06
+      bmi_rel_err_threshold: 0.02
+    assumptions:
+    - 1-hour extrema must lie within 24-hour extrema for same stay.
+    missing_data_policy: Evaluate strictly where both compared columns are non-null.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: min_gt_max=1683, h1_out_d1=80081, ap_out_d1=250511, bmi_mismatch=2274,
+      bmi_recoverable=(tr:0, te:0)
+    formula: min_gt_max + h1_out_d1 + bmi_mismatch
+  condition:
+    timeframe: Static WiDS Datathon 2021 Train and Unlabeled snapshots
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: 'TRUE'
+    'true': total_violations >= 100 OR min_gt_max >= 1 OR h1_out_d1 >= 1
+    'false': total_violations == 0
+    inconclusive: 1-99 BMI mismatches with zero min/max or h1/d1 inversions
+  action:
+    on_true: 'Define cleaning/BMI recovery rules in Stage 5-6; Spawns #I11.1; Ref
+      to #I12.'
+    on_false: 'Certify algebraic bounds; log recoverable BMI; Spawns #I11.1; Ref to
+      #I12.'
+    on_inconclusive: 'Inspect <100 BMI discrepancies; Spawns #I11.1; Ref to #I12.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 min/max pairs
+    - height
+    - weight
+    - bmi
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I11.1
+  status: 'FALSE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I11. General BP columns absorb >= 99% of invasive/noninvasive
+      BP readings (unabsorbed <= 0.01%) and dropping sub-columns with has_invasive_bp
+      preserves AUC.'
+  methodology:
+    technique: 12-triplet BP extremum reconciliation and grouped-CV ablation
+    parameters:
+      bp_triplets: 12
+      pruned_sub_cols: 24
+    assumptions:
+    - General BP encompasses either invasive or noninvasive readings.
+    missing_data_policy: Reconcile where either invasive or noninvasive is non-null.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: max_unabs_pct=17.5223%, mean_inv_minus_noninv=+3.166mmHg, auc_pruned=0.84962
+      (Δ=-0.00001)
+    formula: unabsorbed_pct; auc_bp_pruned - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 36 BP columns in Train and Test
+  verdict:
+    outcome: 'FALSE'
+    'true': max_unabs <= 0.01 AND |delta_bp| < 0.002
+    'false': max_unabs > 0.05 OR delta_bp <= -0.005
+    inconclusive: Partial absorption or minor AUC drop
+  action:
+    on_true: 'Adopt general BP + has_invasive_bp simplification -> Ref to #I12.'
+    on_false: 'Retain invasive/noninvasive BP sub-columns -> Ref to #I12.'
+    on_inconclusive: 'Keep BP sub-columns + has_invasive_bp for Stage 6 check -> Ref
+      to #I12.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 36 d1_/h1_ blood-pressure columns
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I12
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Numeric predictors exhibit >= 5 dictionary unit-scale mismatches and >=
+      3 extreme tail columns (>= 0.1%), while sanitizing hard sentinels to NaN preserves
+      AUC.
+  methodology:
+    technique: Quantile tail audit (p0.1..p99.9) and pre/post sanitization 5-fold
+      SGKF CV
+    parameters:
+      extreme_rate_threshold_pct: 0.1
+    assumptions:
+    - Extreme survival bounds distinguish physiology from EHR sentinels.
+    missing_data_policy: Coerce hard-impossible/sentinel values to NaN without row
+      drops.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: k_unit=9 (['hematocrit_apache', 'd1_hematocrit_max', 'd1_hematocrit_min',
+      'h1_hematocrit_max', 'h1_hematocrit_min', 'd1_pao2fio2ratio_max', 'd1_pao2fio2ratio_min',
+      'h1_pao2fio2ratio_max', 'h1_pao2fio2ratio_min']), n_extreme=6 (['pre_icu_los_days',
+      'd1_heartrate_min', 'd1_resprate_min', 'd1_spo2_min', 'h1_resprate_min', 'h1_spo2_min']),
+      auc_san=0.84974 (Δ=+0.00011)
+    formula: auc_sanitized - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 169 numeric F_clinical predictors
+  verdict:
+    outcome: 'TRUE'
+    'true': k_unit >= 5 AND n_extreme >= 3 AND delta_san >= -0.001
+    'false': k_unit == 0 AND n_extreme == 0
+    inconclusive: Partial unit mismatch or sanitization AUC delta < -0.001
+  action:
+    on_true: 'Lock range sanitization (keep hematocrit in %); Spawns #I12.1; Ref to
+      #I13.'
+    on_false: 'Document clean scales; Spawns #I12.1; Ref to #I13.'
+    on_inconclusive: 'Hold blind zero->NaN pending hospital-sentinel check #I12.1
+      -> Ref to #I13.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2);
+      data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 169 numeric predictors in F_clinical
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I12.1
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I12. Zero-coded vital/age anomalies cluster inside specific
+      hospital_id feeds (top-5 hospitals >= 50% of zeros or >= 25% rate in a hospital
+      n >= 30).'
+  methodology:
+    technique: Per-hospital zero-rate concentration and diabetes prevalence audit
+    parameters:
+      top5_share_min: 0.5
+      hosp_rate_min: 0.25
+    assumptions:
+    - Hospital-concentrated 0s indicate EHR missingness-as-zero defaults.
+    missing_data_policy: Evaluated over non-null entries per column.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: 'k_hosp_conc=4, details=[{''col'': ''d1_resprate_min'', ''n_zero'': 5868,
+      ''top5_hosp_share'': 0.1943, ''max_hosp_rate_n30'': 0.3527, ''dm_zero_pct'':
+      24.42, ''dm_nonzero_pct'': 21.51}, {''col'': ''h1_resprate_min'', ''n_zero'':
+      905, ''top5_hosp_share'': 0.2099, ''max_hosp_rate_n30'': 0.2992, ''dm_zero_pct'':
+      25.75, ''dm_nonzero_pct'': 21.62}, {''col'': ''d1_heartrate_min'', ''n_zero'':
+      901, ''top5_hosp_share'': 0.1887, ''max_hosp_rate_n30'': 0.25, ''dm_zero_pct'':
+      19.76, ''dm_nonzero_pct'': 21.66}, {''col'': ''age'', ''n_zero'': 30, ''top5_hosp_share'':
+      0.8, ''max_hosp_rate_n30'': 0.038, ''dm_zero_pct'': 10.0, ''dm_nonzero_pct'':
+      21.97}]'
+    formula: count(top5_hosp_share >= 0.50 OR max_hosp_rate_n30 >= 0.25)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - d1_resprate_min, h1_resprate_min, d1_heartrate_min, age
+  verdict:
+    outcome: 'TRUE'
+    'true': k_hosp_conc >= 1
+    'false': max(top5_share) < 0.25 AND max(hosp_rate) < 0.10
+    inconclusive: Moderate hospital clustering
+  action:
+    on_true: 'Treat concentrated 0-vitals/age==0 as EHR missingness sentinels -> Ref
+      to #I13.'
+    on_false: 'Treat zero vitals as distributed clinical events -> Ref to #I13.'
+    on_inconclusive: 'Verify 0->NaN sensitivity in Stage 6 CV -> Ref to #I13.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_resprate_min
+    - h1_resprate_min
+    - d1_heartrate_min
+    - age
+    - hospital_id
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I13
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Across the 8 realized WiDS 2021 categorical/diagnosis predictors, >= 50
+      rare levels (n < 30) and >= 1 unseen Unlabeled test category level exist.
+  methodology:
+    technique: Cardinality, rare-level, unseen test-level, and string-collision audit
+    parameters:
+      rare_n_threshold: 30
+      n_cols: 8
+    assumptions:
+    - apache_2_bodysystem / apache_3j_bodysystem do not exist in WiDS 2021.
+    missing_data_policy: Map NaN to '__MISSING__' prior to level comparisons.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: tot_rare_lt30=126, tot_unseen_test=2, max_unseen_row_pct=0.0195%
+    formula: sum(|levels < 30|); sum(|levels_test \ levels_train|)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - 8 realized categorical/diagnosis cols (excluding absent bodysystem cols)
+  verdict:
+    outcome: 'TRUE'
+    'true': tot_rare >= 50 AND (tot_unseen >= 1 OR max_unseen_pct > 0)
+    'false': tot_rare == 0 AND tot_unseen == 0
+    inconclusive: Rare levels without unseen test levels (or vice versa)
+  action:
+    on_true: 'Lock unknown-safe encoding + rare pooling; Spawns #I13.1.'
+    on_false: 'Document clean overlap; Spawns #I13.1.'
+    on_inconclusive: 'Review rare-level concentration in stage4_categorical_audit.csv;
+      Spawns #I13.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - ethnicity
+    - gender
+    - hospital_admit_source
+    - icu_admit_source
+    - icu_stay_type
+    - icu_type
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'
+- id: I13.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I13. Decomposing apache_3j_diagnosis into hierarchical nominal
+      parts + OOF smoothed TE lifts diagnosis-only AUC >= +0.010 and full AUC >= +0.001.'
+  methodology:
+    technique: '5-fold SGKF benchmark: raw float vs hierarchical decomposition + OOF
+      TE'
+    parameters:
+      te_smoothing_m: 20.0
+    assumptions:
+    - Integer major code and hundreds organ system encode nominal pathology.
+    missing_data_policy: Missing codes receive fold-train target prior.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: diag_raw=0.63872, diag_hier=0.64564 (Δ=+0.00692), full_raw=0.84963, full_hier=0.85165
+      (Δ=+0.00202)
+    formula: auc_diag_hier - auc_diag_raw; auc_full_hier - auc_full_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': delta_diag >= 0.010 AND delta_full >= 0.001
+    'false': delta_diag <= 0.0 AND delta_full <= 0.0
+    inconclusive: Standalone diagnosis gain without full-tree delta >= +0.001
+  action:
+    on_true: Adopt apache_3j hierarchy + OOF TE in Stage 5-6 -> Proceeds Stage 5.
+    on_false: Keep native handling without TE overhead -> Proceeds Stage 5.
+    on_inconclusive: Carry apache_3j hierarchy into Stage 5-6 feature testing -> Proceeds
+      Stage 5.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: '2026-11-19T07:04:13+08:00'

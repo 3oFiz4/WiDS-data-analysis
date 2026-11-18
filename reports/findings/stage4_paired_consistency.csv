@@ -1,0 +1,157 @@
+check_type,pair,train_n_both,train_violations,test_n_both,test_violations
+min_gt_max,d1_albumin_min > d1_albumin_max,58751,117,4694,12
+min_gt_max,d1_arterial_pco2_min > d1_arterial_pco2_max,45696,11,3823,0
+min_gt_max,d1_arterial_ph_min > d1_arterial_ph_max,45350,39,3749,4
+min_gt_max,d1_arterial_po2_min > d1_arterial_po2_max,46147,0,3892,0
+min_gt_max,d1_bilirubin_min > d1_bilirubin_max,53422,0,4374,0
+min_gt_max,d1_bun_min > d1_bun_max,116423,27,9126,3
+min_gt_max,d1_calcium_min > d1_calcium_max,113465,63,8832,7
+min_gt_max,d1_creatinine_min > d1_creatinine_max,116884,2,9143,3
+min_gt_max,d1_diasbp_invasive_min > d1_diasbp_invasive_max,35089,6,2909,0
+min_gt_max,d1_diasbp_min > d1_diasbp_max,129880,18,10211,1
+min_gt_max,d1_diasbp_noninvasive_min > d1_diasbp_noninvasive_max,128521,17,10085,1
+min_gt_max,d1_glucose_min > d1_glucose_max,121914,1,9553,0
+min_gt_max,d1_hco3_min > d1_hco3_max,110110,171,8640,14
+min_gt_max,d1_heartrate_min > d1_heartrate_max,129895,29,10210,8
+min_gt_max,d1_hemaglobin_min > d1_hemaglobin_max,113925,70,8985,6
+min_gt_max,d1_hematocrit_min > d1_hematocrit_max,114569,19,9005,0
+min_gt_max,d1_inr_min > d1_inr_max,48944,0,4198,3
+min_gt_max,d1_lactate_min > d1_lactate_max,34654,4,2445,0
+min_gt_max,d1_mbp_invasive_min > d1_mbp_invasive_max,35289,11,2919,2
+min_gt_max,d1_mbp_min > d1_mbp_max,129830,13,10197,1
+min_gt_max,d1_mbp_noninvasive_min > d1_mbp_noninvasive_max,127929,25,10022,1
+min_gt_max,d1_pao2fio2ratio_min > d1_pao2fio2ratio_max,36818,0,3122,0
+min_gt_max,d1_platelets_min > d1_platelets_max,111600,7,8837,2
+min_gt_max,d1_potassium_min > d1_potassium_max,117611,84,9264,0
+min_gt_max,d1_resprate_min > d1_resprate_max,129474,9,10179,0
+min_gt_max,d1_sodium_min > d1_sodium_max,116887,89,9168,6
+min_gt_max,d1_spo2_min > d1_spo2_max,129625,0,10172,0
+min_gt_max,d1_sysbp_invasive_min > d1_sysbp_invasive_max,35119,8,2912,3
+min_gt_max,d1_sysbp_min > d1_sysbp_max,129886,30,10211,0
+min_gt_max,d1_sysbp_noninvasive_min > d1_sysbp_noninvasive_max,128534,29,10086,0
+min_gt_max,d1_temp_min > d1_temp_max,125663,95,9804,0
+min_gt_max,d1_wbc_min > d1_wbc_max,112728,0,8812,0
+min_gt_max,h1_albumin_min > h1_albumin_max,11152,0,869,0
+min_gt_max,h1_arterial_pco2_min > h1_arterial_pco2_max,22491,0,1887,0
+min_gt_max,h1_arterial_ph_min > h1_arterial_ph_max,22308,19,1833,0
+min_gt_max,h1_arterial_po2_min > h1_arterial_po2_max,22712,0,1928,0
+min_gt_max,h1_bilirubin_min > h1_bilirubin_max,10296,0,827,0
+min_gt_max,h1_bun_min > h1_bun_max,25167,0,2004,0
+min_gt_max,h1_calcium_min > h1_calcium_max,24236,19,1928,0
+min_gt_max,h1_creatinine_min > h1_creatinine_max,25373,0,2014,0
+min_gt_max,h1_diasbp_invasive_min > h1_diasbp_invasive_max,25328,6,2061,1
+min_gt_max,h1_diasbp_min > h1_diasbp_max,124630,45,9582,0
+min_gt_max,h1_diasbp_noninvasive_min > h1_diasbp_noninvasive_max,118818,43,9078,0
+min_gt_max,h1_glucose_min > h1_glucose_max,55084,0,4244,0
+min_gt_max,h1_hco3_min > h1_hco3_max,23762,1,1896,0
+min_gt_max,h1_heartrate_min > h1_heartrate_max,126083,48,9683,11
+min_gt_max,h1_hemaglobin_min > h1_hemaglobin_max,27367,15,2189,0
+min_gt_max,h1_hematocrit_min > h1_hematocrit_max,27201,4,2195,0
+min_gt_max,h1_inr_min > h1_inr_max,48944,0,4198,3
+min_gt_max,h1_lactate_min > h1_lactate_max,11690,2,813,0
+min_gt_max,h1_mbp_invasive_min > h1_mbp_invasive_max,25391,0,2048,2
+min_gt_max,h1_mbp_min > h1_mbp_max,123627,28,9437,0
+min_gt_max,h1_mbp_noninvasive_min > h1_mbp_noninvasive_max,116860,43,8845,3
+min_gt_max,h1_pao2fio2ratio_min > h1_pao2fio2ratio_max,16760,2,1422,0
+min_gt_max,h1_platelets_min > h1_platelets_max,24428,0,2038,0
+min_gt_max,h1_potassium_min > h1_potassium_max,29336,21,2355,0
+min_gt_max,h1_resprate_min > h1_resprate_max,123703,79,9510,8
+min_gt_max,h1_sodium_min > h1_sodium_max,28376,0,2269,0
+min_gt_max,h1_spo2_min > h1_spo2_max,123915,0,9508,0
+min_gt_max,h1_sysbp_invasive_min > h1_sysbp_invasive_max,25350,5,2064,0
+min_gt_max,h1_sysbp_min > h1_sysbp_max,124638,39,9583,0
+min_gt_max,h1_sysbp_noninvasive_min > h1_sysbp_noninvasive_max,118827,39,9079,3
+min_gt_max,h1_temp_min > h1_temp_max,100454,110,7580,13
+min_gt_max,h1_wbc_min > h1_wbc_max,24171,0,1970,0
+h1_outside_d1,h1_albumin_max > d1_albumin_max,11152,102,869,8
+h1_outside_d1,h1_albumin_min < d1_albumin_min,11152,31,869,7
+h1_outside_d1,h1_arterial_pco2_max > d1_arterial_pco2_max,22491,122,1887,0
+h1_outside_d1,h1_arterial_pco2_min < d1_arterial_pco2_min,22491,7,1887,10
+h1_outside_d1,h1_arterial_ph_max > d1_arterial_ph_max,22308,17,1833,2
+h1_outside_d1,h1_arterial_ph_min < d1_arterial_ph_min,22308,3,1833,20
+h1_outside_d1,h1_arterial_po2_max > d1_arterial_po2_max,22712,0,1928,0
+h1_outside_d1,h1_arterial_po2_min < d1_arterial_po2_min,22712,0,1928,0
+h1_outside_d1,h1_bilirubin_max > d1_bilirubin_max,10296,0,827,0
+h1_outside_d1,h1_bilirubin_min < d1_bilirubin_min,10296,0,827,0
+h1_outside_d1,h1_bun_max > d1_bun_max,25167,167,2004,19
+h1_outside_d1,h1_bun_min < d1_bun_min,25167,5,2004,0
+h1_outside_d1,h1_calcium_max > d1_calcium_max,24236,213,1928,19
+h1_outside_d1,h1_calcium_min < d1_calcium_min,24236,150,1928,0
+h1_outside_d1,h1_creatinine_max > d1_creatinine_max,25373,148,2014,21
+h1_outside_d1,h1_creatinine_min < d1_creatinine_min,25373,0,2014,0
+h1_outside_d1,h1_diasbp_invasive_max > d1_diasbp_invasive_max,25328,1132,2061,120
+h1_outside_d1,h1_diasbp_invasive_min < d1_diasbp_invasive_min,25328,859,2061,81
+h1_outside_d1,h1_diasbp_max > d1_diasbp_max,124630,4806,9582,459
+h1_outside_d1,h1_diasbp_min < d1_diasbp_min,124630,4387,9582,386
+h1_outside_d1,h1_diasbp_noninvasive_max > d1_diasbp_noninvasive_max,118818,3265,9078,313
+h1_outside_d1,h1_diasbp_noninvasive_min < d1_diasbp_noninvasive_min,118818,2334,9078,201
+h1_outside_d1,h1_glucose_max > d1_glucose_max,55084,393,4244,27
+h1_outside_d1,h1_glucose_min < d1_glucose_min,55084,3,4244,0
+h1_outside_d1,h1_hco3_max > d1_hco3_max,23762,23,1896,5
+h1_outside_d1,h1_hco3_min < d1_hco3_min,23762,217,1896,20
+h1_outside_d1,h1_heartrate_max > d1_heartrate_max,126083,3154,9683,334
+h1_outside_d1,h1_heartrate_min < d1_heartrate_min,126083,2074,9683,231
+h1_outside_d1,h1_hemaglobin_max > d1_hemaglobin_max,27367,169,2189,16
+h1_outside_d1,h1_hemaglobin_min < d1_hemaglobin_min,27367,192,2189,19
+h1_outside_d1,h1_hematocrit_max > d1_hematocrit_max,27201,145,2195,15
+h1_outside_d1,h1_hematocrit_min < d1_hematocrit_min,27201,177,2195,18
+h1_outside_d1,h1_inr_max > d1_inr_max,48944,0,4198,0
+h1_outside_d1,h1_inr_min < d1_inr_min,48944,0,4198,0
+h1_outside_d1,h1_lactate_max > d1_lactate_max,11690,2,813,0
+h1_outside_d1,h1_lactate_min < d1_lactate_min,11690,0,813,3
+h1_outside_d1,h1_mbp_invasive_max > d1_mbp_invasive_max,25391,1174,2048,118
+h1_outside_d1,h1_mbp_invasive_min < d1_mbp_invasive_min,25391,926,2048,96
+h1_outside_d1,h1_mbp_max > d1_mbp_max,123627,5961,9437,599
+h1_outside_d1,h1_mbp_min < d1_mbp_min,123627,4226,9437,412
+h1_outside_d1,h1_mbp_noninvasive_max > d1_mbp_noninvasive_max,116860,3388,8845,350
+h1_outside_d1,h1_mbp_noninvasive_min < d1_mbp_noninvasive_min,116860,2528,8845,263
+h1_outside_d1,h1_pao2fio2ratio_max > d1_pao2fio2ratio_max,16760,0,1422,0
+h1_outside_d1,h1_pao2fio2ratio_min < d1_pao2fio2ratio_min,16760,0,1422,0
+h1_outside_d1,h1_platelets_max > d1_platelets_max,24428,1,2038,11
+h1_outside_d1,h1_platelets_min < d1_platelets_min,24428,2,2038,0
+h1_outside_d1,h1_potassium_max > d1_potassium_max,29336,205,2355,14
+h1_outside_d1,h1_potassium_min < d1_potassium_min,29336,18,2355,2
+h1_outside_d1,h1_resprate_max > d1_resprate_max,123703,3339,9510,305
+h1_outside_d1,h1_resprate_min < d1_resprate_min,123703,2920,9510,310
+h1_outside_d1,h1_sodium_max > d1_sodium_max,28376,32,2269,2
+h1_outside_d1,h1_sodium_min < d1_sodium_min,28376,251,2269,19
+h1_outside_d1,h1_spo2_max > d1_spo2_max,123915,2457,9508,232
+h1_outside_d1,h1_spo2_min < d1_spo2_min,123915,2828,9508,309
+h1_outside_d1,h1_sysbp_invasive_max > d1_sysbp_invasive_max,25350,1129,2064,124
+h1_outside_d1,h1_sysbp_invasive_min < d1_sysbp_invasive_min,25350,970,2064,99
+h1_outside_d1,h1_sysbp_max > d1_sysbp_max,124638,5664,9583,518
+h1_outside_d1,h1_sysbp_min < d1_sysbp_min,124638,4115,9583,382
+h1_outside_d1,h1_sysbp_noninvasive_max > d1_sysbp_noninvasive_max,118827,3059,9079,271
+h1_outside_d1,h1_sysbp_noninvasive_min < d1_sysbp_noninvasive_min,118827,2563,9079,262
+h1_outside_d1,h1_temp_max > d1_temp_max,100454,208,7580,11
+h1_outside_d1,h1_temp_min < d1_temp_min,100454,674,7580,83
+h1_outside_d1,h1_wbc_max > d1_wbc_max,24171,0,1970,0
+h1_outside_d1,h1_wbc_min < d1_wbc_min,24171,0,1970,0
+apache_outside_d1,"albumin_apache not in [d1_albumin_min, d1_albumin_max]",50813,1810,4087,158
+apache_outside_d1,"bilirubin_apache not in [d1_bilirubin_min, d1_bilirubin_max]",46243,984,3799,75
+apache_outside_d1,"bun_apache not in [d1_bun_min, d1_bun_max]",103764,3488,8103,231
+apache_outside_d1,"creatinine_apache not in [d1_creatinine_min, d1_creatinine_max]",104287,4369,8122,291
+apache_outside_d1,"glucose_apache not in [d1_glucose_min, d1_glucose_max]",114870,4901,8985,444
+apache_outside_d1,"heart_rate_apache not in [d1_heartrate_min, d1_heartrate_max]",129836,71054,10203,5532
+apache_outside_d1,"hematocrit_apache not in [d1_hematocrit_min, d1_hematocrit_max]",102221,5001,8049,394
+apache_outside_d1,"map_apache not in [d1_mbp_min, d1_mbp_max]",129714,64199,10181,4988
+apache_outside_d1,"paco2_apache not in [d1_arterial_pco2_min, d1_arterial_pco2_max]",30257,455,2582,37
+apache_outside_d1,"pao2_apache not in [d1_arterial_po2_min, d1_arterial_po2_max]",30254,470,2582,33
+apache_outside_d1,"ph_apache not in [d1_arterial_ph_min, d1_arterial_ph_max]",30257,510,2582,44
+apache_outside_d1,"resprate_apache not in [d1_resprate_min, d1_resprate_max]",129195,64896,10156,5217
+apache_outside_d1,"sodium_apache not in [d1_sodium_min, d1_sodium_max]",104671,2914,8176,244
+apache_outside_d1,"temp_apache not in [d1_temp_min, d1_temp_max]",123496,3758,9553,365
+apache_outside_d1,"wbc_apache not in [d1_wbc_min, d1_wbc_max]",99387,3340,7782,309
+bmi_formula_mismatch_gt2pct,bmi vs weight/(height/100)^2,125667,2106,9219,168
+bp_triplet_absorption,"d1_diasbp_max vs (d1_diasbp_invasive_max, d1_diasbp_noninvasive_max)",129880,13620,10211,0
+bp_triplet_absorption,"d1_diasbp_min vs (d1_diasbp_invasive_min, d1_diasbp_noninvasive_min)",129880,18723,10211,0
+bp_triplet_absorption,"d1_mbp_max vs (d1_mbp_invasive_max, d1_mbp_noninvasive_max)",129830,21138,10197,0
+bp_triplet_absorption,"d1_mbp_min vs (d1_mbp_invasive_min, d1_mbp_noninvasive_min)",129830,15657,10197,0
+bp_triplet_absorption,"d1_sysbp_max vs (d1_sysbp_invasive_max, d1_sysbp_noninvasive_max)",129886,22759,10211,0
+bp_triplet_absorption,"d1_sysbp_min vs (d1_sysbp_invasive_min, d1_sysbp_noninvasive_min)",129886,16970,10211,0
+bp_triplet_absorption,"h1_diasbp_max vs (h1_diasbp_invasive_max, h1_diasbp_noninvasive_max)",124630,8530,9582,0
+bp_triplet_absorption,"h1_diasbp_min vs (h1_diasbp_invasive_min, h1_diasbp_noninvasive_min)",124630,12432,9582,0
+bp_triplet_absorption,"h1_mbp_max vs (h1_mbp_invasive_max, h1_mbp_noninvasive_max)",123627,12239,9437,0
+bp_triplet_absorption,"h1_mbp_min vs (h1_mbp_invasive_min, h1_mbp_noninvasive_min)",123627,8492,9437,0
+bp_triplet_absorption,"h1_sysbp_max vs (h1_sysbp_invasive_max, h1_sysbp_noninvasive_max)",124638,13380,9583,0
+bp_triplet_absorption,"h1_sysbp_min vs (h1_sysbp_invasive_min, h1_sysbp_noninvasive_min)",124638,8696,9583,0
