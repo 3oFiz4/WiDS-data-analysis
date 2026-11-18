@@ -10,21 +10,61 @@ I only assume these methods below from a single glimpse, and these methods origi
 
 > **#I1 (TRUE) & #I3 (TRUE)**: Sorted all 181 columns in [feature_sparsity_constants.csv](../reports/findings/feature_sparsity_constants.csv) by `missing_pct_train`, `mode_share_train`, and `nunique_train`. Top missingness reaches `92.09%` (`h1_bilirubin_min/max`), `73` columns exceed `50%` missingness, `readmission_status` has `nunique=1` (`0`), and 3 near-constants exceed `99%` modal share (`aids=99.90%`, `lymphoma=99.58%`, `leukemia=99.27%`).
 
-- [ ] Yield a non-linear correlation analysis over all variables
+- [x] Yield a non-linear correlation analysis over all variables
 
-> According to @..\reports\figures\diabetes_mellitus\Dist_Plots_Numberics.png, almost all of the variables have non-linear distribution, we will assume for now that P1: All variables are non-linear distribution
+> **#I7 (TRUE) & #I7.1 (TRUE)**: Completed across all `175` `F_clinical` features. Pre-assumptive `P1` (*all variables are non-linear/non-normal*) is refuted (`82/153` = `53.59%` violate normality while `71/153` = `46.41%` are near-Gaussian), yet non-linear target signal is pervasive (`Top-20 Jaccard(|r|, MI) = 0.7391`, `15` numeric features show non-monotonic/rank lift, e.g. `d1_glucose_min` `|r|=0.1359` vs `HGB AUC=0.6442` and `apache_3j_diagnosis` `|r|=0.0095` vs `HGB AUC=0.6304`).
 
-- [ ] Yield @..\reports\figures\diabetes_mellitus\Pair_Scatter_Plots.png and assay directly the top-most correlated column
+  - [no] Pre-assumptive P1: All continuous variables follow non-linear / non-normal distributions
 
-> This triage workflow might be useful. Most columns are useless, not only that but 100+ features to be EDA'ed sounds impossible, unless you are some kind of speciallized obtuse folk. We only seek to yield those whom seemingly useful, except those who proxies for the diagnosis itself (e.g., `bmi_level` vs `is_bmi`, both explain the same thing). We will start with these features, EDA these features, and then we will slowly scale to the lower R value features.
+  > **#I7 (TRUE)**: Refuted (`- [no]`)—`71/153` (`46.41%`) continuous numeric predictors (`age`, `height`, `ph_apache`, `d1_hemaglobin_*`, `d1_hematocrit_*`, `d1_sysbp_*`, `d1_albumin_*`) satisfy `|skew| <= 1.0`, `|kurt| <= 2.0`, and `Shapiro-Wilk W >= 0.95`.
+
+  - [x] **[I7] Sub-Analysis: Distributional Normality Audit (Testing P1 Across 153 Continuous Predictors)**
+
+  > **#I7 (TRUE)**: `82/153` (`53.59%`) fail normality thresholds while `71/153` (`46.41%`) are near-Gaussian ([feature_triage_table.csv](../reports/findings/feature_triage_table.csv)).
+
+  - [x] **[I7.1] Sub-Analysis: Linear vs. Non-Linear & Non-Monotonic Target-Signal Ranking (All 175 Features)**
+
+  > **#I7.1 (TRUE)**: Compared `|Pearson r|`, `|Spearman rho|`, `MI_non_null`, `DecisionTree(depth=4)`, and 5-fold grouped `HGB AUC` ([stage3_linear_vs_nonlinear_ranking.png](../reports/figures/stage3/stage3_linear_vs_nonlinear_ranking.png)).
+
+- [x] Yield @..\reports\figures\diabetes_mellitus\Pair_Scatter_Plots.png and assay directly the top-most correlated column
+
+> **#I8 (TRUE) & #I8.1 (INCONCLUSIVE)**: Replaced the unreadable AutoViz strip with quantitative Spearman clustering ([stage3_top_collinearity_heatmap.png](../reports/figures/stage3/stage3_top_collinearity_heatmap.png)) and decile risk plots ([stage3_top_analytes_distributions.png](../reports/figures/stage3/stage3_top_analytes_distributions.png)). Top-most feature is `c_top1 = d1_glucose_max` (`HGB AUC=0.7839`, `r=0.4007`, `rho=0.4084`, twin `glucose_apache`).
+
+  - [x] **[I8] Sub-Analysis: Top-25 Collinear Proxy Clustering (`|Spearman rho| >= 0.80`) & `c_top1` Clinical Assay**
+
+  > **#I8 (TRUE)**: `|Spearman rho| >= 0.80` collapses the Top-25 predictors into `13` connected clinical clusters ([stage3_top25_collinearity_clusters.csv](../reports/findings/stage3_top25_collinearity_clusters.csv)).
+
+  - [x] **[I8.1] Sub-Analysis: Multivariate Signal Saturation Test (Top-25 vs. All-175 `StratifiedGroupKFold` AUC)**
+
+  > **#I8.1 (INCONCLUSIVE)**: `Top-25 = 0.84083` (`Top-25-dedup = 0.83767`) -> `Top-50 = 0.84575` -> `All-175 = 0.84963` (`Δ = +0.00880`, improving **`5/5` folds**, [stage3_subset_auc_scaling.png](../reports/figures/stage3/stage3_subset_auc_scaling.png)).
+
+  - [no] Discard lower-ranked features (ranks 26..175) as useless
+
+  > **#I8.1 (INCONCLUSIVE)**: Rejected (`- [no]`)—retaining features 26..175 boosts out-of-hospital CV ROC-AUC in `5/5` folds (`+0.00880` overall).
 
 - [no] Blindly drop >80%-missing columns (`h1_*` / `labs blood gas`) prior to MNAR testing
 
 > **#I3 (TRUE)**: Rejected (`- [no]`) blind deletion of the `32` >80%-missing columns because `71.23%` (`52/73`) of >50%-missing predictors concentrate in first-hour (`h1_`) and `labs blood gas` clinical orders (`+17.77 pp` median `h1_ - d1_` gap, Wilcoxon `p=3.772e-12`), which represent informative clinical-suspicion missingness to test in Stage 4.
 
-- [ ] Rank each columns by Linearity and Non-Linearity Signal
-- [ ] Yield a Feature Triage Summary Table
-- [ ] In <Feature Triage Summary Table>, analysis each variable ((as much as needed) top-most ranked) and audit them if they justify any of these questions below: Is this post-diagnosis leakage?; Does impossible values exist?
+- [x] Rank each columns by Linearity and Non-Linearity Signal
+
+> **#I7.1 (TRUE)**: All `175` `F_clinical` features ranked by `auc_hgb_full_grouped`, `mi_non_null`, `|Pearson r|`, `|Spearman rho|`, `nonlinear_tree_lift`, and `rank_corr_lift` in [feature_triage_table.csv](../reports/findings/feature_triage_table.csv).
+
+- [x] Yield a Feature Triage Summary Table
+
+> **#I9 (TRUE)**: Exported the full 175-feature triage table to [feature_triage_table.csv](../reports/findings/feature_triage_table.csv) and Top-25 summary in [stage3_feature_triage.md](../reports/findings/stage3_feature_triage.md).
+
+- [x] In <Feature Triage Summary Table>, analysis each variable ((as much as needed) top-most ranked) and audit them if they justify any of these questions below: Is this post-diagnosis leakage?; Does impossible values exist?
+
+> **#I9 (TRUE) & #I9.1 (INCONCLUSIVE)**: Zero Top-40 features exceed `AUC >= 0.90` (`k_hard_leak_top40 = 0`; max `0.7839`), while `10` columns fail physiological/unit bounds ([stage3_impossible_values_detail.csv](../reports/findings/stage3_impossible_values_detail.csv))—most strikingly all `5` `hematocrit` columns are `100%` in percentage scale (`15.5–51.7`) rather than `[0,1]` fraction, `d1_resprate_min == 0` (`4.53%`), `pre_icu_los_days < 0` (`0.36%`), and `age == 0` (`30` train rows).
+
+  - [x] **[I9] Sub-Analysis: 175-Feature Single-Feature Leakage & Hard Impossible-Value Screen**
+
+  > **#I9 (TRUE)**: Flagged `10` impossible-value columns across Train/Test (`5` `hematocrit` unit mismatch, `d1/h1_resprate_min == 0`, `d1_heartrate_min == 0`, `pre_icu_los_days < 0`, `age == 0`).
+
+  - [x] **[I9.1] Sub-Analysis: APACHE Diagnosis Code (`>=85%`) & Glucose-Proxy Phenotype Ablation**
+
+  > **#I9.1 (INCONCLUSIVE)**: `0` APACHE diagnosis codes (`n >= 30`) reach `>= 85%` prevalence (`k_diag_ge85 = 0`); dropping all 5 glucose + 2 diagnosis features lowers grouped HGB AUC from `0.84963` to `0.74388` (`Δ = -0.10575`), confirming strong non-glucose systemic signal (`0.74388`).
 
 - [x] **Schema, Identifier & Constant Column Audit** (`Unnamed: 0`, `encounter_id`, `hospital_id`, `icu_id`, `readmission_status`)
 

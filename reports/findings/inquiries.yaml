@@ -667,3 +667,347 @@ inquiries:
     extraction:
       script: scripts/stage2_shift_and_target.py
       timestamp: '2026-11-19T06:40:30+08:00'
+- id: I7
+  status: 'TRUE'
+  hypothesis:
+    polarity: '-'
+    claim: Rivals P1 ('All variables are non-linear distribution'). Fewer than 100%
+      of continuous predictors (nunique>=10) violate normality, with >=10% near-Gaussian.
+  methodology:
+    technique: Skewness, excess kurtosis, and 5000-row seeded Shapiro-Wilk W audit
+    parameters:
+      shapiro_sample_n: 5000
+      seed: 42
+    assumptions:
+    - Substantive non-normality requires |skew|>1, |kurt|>2, or W<0.95.
+    missing_data_policy: Non-null values per column.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: n_cont=153, n_non_normal=82 (53.59%), near_gaussian=['age', 'd1_hemaglobin_max',
+      'd1_hemaglobin_min', 'd1_hematocrit_max', 'd1_sysbp_noninvasive_max', 'd1_sysbp_max',
+      'd1_hematocrit_min', 'd1_potassium_min', 'hematocrit_apache', 'd1_hco3_min',
+      'd1_calcium_max', 'h1_diasbp_min', 'h1_diasbp_noninvasive_min', 'heart_rate_apache',
+      'h1_diasbp_max', 'd1_diasbp_min', 'd1_sodium_max', 'd1_calcium_min', 'h1_diasbp_noninvasive_max',
+      'd1_diasbp_noninvasive_min', 'd1_hco3_max', 'h1_sysbp_noninvasive_max', 'h1_potassium_max',
+      'h1_potassium_min', 'd1_diasbp_invasive_min', 'h1_sysbp_max', 'd1_diasbp_max',
+      'h1_sysbp_noninvasive_min', 'd1_diasbp_noninvasive_max', 'd1_heartrate_min',
+      'd1_albumin_min', 'h1_calcium_min', 'h1_calcium_max', 'd1_albumin_max', 'h1_diasbp_invasive_min',
+      'albumin_apache', 'h1_sysbp_min', 'h1_diasbp_invasive_max', 'h1_hemaglobin_min',
+      'h1_hemaglobin_max', 'd1_sysbp_min', 'd1_sysbp_noninvasive_min', 'h1_hematocrit_min',
+      'd1_platelets_min', 'h1_hematocrit_max', 'd1_heartrate_max', 'h1_mbp_min', 'h1_mbp_invasive_min',
+      'h1_hco3_min', 'h1_hco3_max', 'h1_mbp_max', 'd1_pao2fio2ratio_max', 'h1_mbp_noninvasive_min',
+      'd1_pao2fio2ratio_min', 'h1_mbp_noninvasive_max', 'd1_mbp_max', 'h1_heartrate_min',
+      'd1_mbp_noninvasive_max', 'd1_arterial_ph_max', 'd1_mbp_min', 'h1_pao2fio2ratio_min',
+      'height', 'h1_pao2fio2ratio_max', 'ph_apache', 'd1_mbp_noninvasive_min', 'h1_albumin_min',
+      'h1_heartrate_max', 'h1_albumin_max', 'h1_sysbp_invasive_max', 'h1_sysbp_invasive_min',
+      'd1_sysbp_invasive_min']
+    formula: count(|skew|>1 OR |kurt|>2 OR W<0.95) / n_cont
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - Numeric predictors in F_clinical with nunique_train >= 10
+  verdict:
+    outcome: 'TRUE'
+    'true': frac_non_normal <= 0.90
+    'false': frac_non_normal == 1.0
+    inconclusive: 0.90 < frac_non_normal < 1.0
+  action:
+    on_true: 'Refute blanket P1; tag near_gaussian cols in triage table; Spawns #I7.1.'
+    on_false: 'Confirm P1 across 100% of continuous vars; mandate non-linear; Spawns
+      #I7.1.'
+    on_inconclusive: 'Document near-universal non-normality and small Gaussian list;
+      Spawns #I7.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Continuous numeric predictors in F_clinical
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
+- id: I7.1
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I7. Non-linear grouped HGB AUC and MI surface predictive signals
+      missed by Pearson |r| (Top-20 Jaccard < 0.80 and >= 5 numeric features with
+      lift).'
+  methodology:
+    technique: 175-feature Pearson |r|, Spearman |rho|, MI, DecisionTree, and HGB
+      AUC
+    parameters:
+      cv: StratifiedGroupKFold(5)
+      tree_depth: 4
+      mi_neighbors: 5
+    assumptions:
+    - Comparing depth-4 tree vs rank AUC on non-null rows isolates U-shapes.
+    missing_data_policy: Linear/MI/Tree on non-null rows; HGB natively over all 130,157
+      rows.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: top20_jaccard=0.7391, k_nonlinear_lift=15
+    formula: Jaccard(Top20(|r|), Top20(MI)); count(tree_lift>=0.015 OR rank_lift>=0.03)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 175 F_clinical predictors
+  verdict:
+    outcome: 'TRUE'
+    'true': top20_jaccard < 0.80 AND k_nonlinear_lift >= 5
+    'false': top20_jaccard >= 0.90 AND k_nonlinear_lift == 0
+    inconclusive: Partial rank divergence or non-monotonic lift
+  action:
+    on_true: 'Adopt auc_hgb_full_grouped + MI as canonical triage ranking -> Ref to
+      #I8.'
+    on_false: 'Document linear sufficiency while retaining grouped HGB -> Ref to #I8.'
+    on_inconclusive: 'Retain dual linear + non-linear triage rankings -> Ref to #I8.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
+- id: I8
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Within Top-25 predictors by grouped HGB AUC, |Spearman rho| >= 0.80 collapses
+      the 25 features into <= 14 clusters with c_top1 having >= 1 Top-25 twin.
+  methodology:
+    technique: Top-25 pairwise Spearman matrix and connected-component clustering
+    parameters:
+      top_k: 25
+      rho_threshold: 0.8
+      min_overlap_n: 1000
+    assumptions:
+    - Cross-window twins of one analyte cluster with |rho| >= 0.80.
+    missing_data_policy: Pairwise complete non-null observations.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: c_top1=d1_glucose_max (auc=0.7839, r=0.40074, rho=0.40843), n_clusters=13,
+      top1_twins=['glucose_apache']
+    formula: Connected components of G(Top25, |Spearman rho| >= 0.80)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - Top-25 predictors in F_clinical ranked by auc_hgb_full_grouped
+  verdict:
+    outcome: 'TRUE'
+    'true': n_clusters <= 14 AND top1_twin_count >= 1
+    'false': n_clusters >= 20 AND top1_twin_count == 0
+    inconclusive: Moderate cluster count (15-19) or singleton c_top1
+  action:
+    on_true: 'Tag redundant Top-25 twins for Stage 5; Spawns #I8.1; Ref to #I9.'
+    on_false: 'Retain Top-25 without proxy merging; Spawns #I8.1; Ref to #I9.'
+    on_inconclusive: 'Review moderate clustering in stage3_top25_collinearity_clusters.csv;
+      Spawns #I8.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_glucose_max
+    - glucose_apache
+    - d1_glucose_min
+    - h1_glucose_max
+    - h1_glucose_min
+    - apache_3j_diagnosis
+    - apache_2_diagnosis
+    - bmi
+    - d1_bun_max
+    - d1_creatinine_max
+    - bun_apache
+    - weight
+    - d1_bun_min
+    - d1_creatinine_min
+    - creatinine_apache
+    - age
+    - d1_potassium_max
+    - d1_sodium_min
+    - d1_hemaglobin_max
+    - d1_hemaglobin_min
+    - d1_hematocrit_max
+    - d1_sysbp_noninvasive_max
+    - sodium_apache
+    - d1_sysbp_max
+    - d1_hematocrit_min
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
+- id: I8.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I8 and rivals pre-assumptive low-R discard claim. Adding features
+      ranked 26..175 increases 5-fold grouped HGB AUC by >= +0.015 (>= 4/5 folds).'
+  methodology:
+    technique: Nested multivariate subset scaling across Top-1..All-175 on locked
+      SGKF splits
+    parameters:
+      subsets:
+      - Top-1
+      - Top-10
+      - Top-25
+      - Top-25-dedup
+      - Top-50
+      - All-175
+    assumptions:
+    - Identical CV folds isolate incremental predictive signal beyond Top-25.
+    missing_data_policy: Native NaN handling inside HistGradientBoostingClassifier.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: 'auc_top25=0.84083, auc_all175=0.84963, delta=+0.00880, folds_improved=5/5,
+      curve=[{''subset'': ''Top-1'', ''n_features'': 1, ''oof_auc'': 0.78358, ''fold_mean_auc'':
+      0.78428, ''fold_std_auc'': 0.00341}, {''subset'': ''Top-10'', ''n_features'':
+      10, ''oof_auc'': 0.82745, ''fold_mean_auc'': 0.82807, ''fold_std_auc'': 0.00246},
+      {''subset'': ''Top-25'', ''n_features'': 25, ''oof_auc'': 0.84083, ''fold_mean_auc'':
+      0.8413, ''fold_std_auc'': 0.0026}, {''subset'': ''Top-25-dedup'', ''n_features'':
+      13, ''oof_auc'': 0.83767, ''fold_mean_auc'': 0.83811, ''fold_std_auc'': 0.00287},
+      {''subset'': ''Top-50'', ''n_features'': 50, ''oof_auc'': 0.84575, ''fold_mean_auc'':
+      0.84633, ''fold_std_auc'': 0.00238}, {''subset'': ''All-175'', ''n_features'':
+      175, ''oof_auc'': 0.84963, ''fold_mean_auc'': 0.85002, ''fold_std_auc'': 0.00232},
+      {''subset'': ''No-Glucose-Diag'', ''n_features'': 168, ''oof_auc'': 0.74388,
+      ''fold_mean_auc'': 0.74386, ''fold_std_auc'': 0.00603}]'
+    formula: OOF_AUC(All-175) - OOF_AUC(Top-25)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': delta >= 0.015 AND folds_improved >= 4
+    'false': delta < 0.005
+    inconclusive: 0.005 <= delta < 0.015 or < 4 folds improved
+  action:
+    on_true: 'Reject pre-assumptive low-R feature discard; mandate All-175 retention
+      -> Ref to #I9.'
+    on_false: 'Confirm Top-25 saturation -> Ref to #I9.'
+    on_inconclusive: 'Keep Top-50 vs All-175 benchmark in Stage 6 -> Ref to #I9.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
+- id: I9
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Zero Top-40 features cross deterministic single-feature leakage (AUC >=
+      0.90), while >= 3 F_clinical columns contain hard physiological/unit impossible
+      values.
+  methodology:
+    technique: 175-feature triage table compilation, single-feature AUC screen, and
+      range scan
+    parameters:
+      top_leak_n: 40
+      leak_auc_min: 0.9
+    assumptions:
+    - DataDictionary units define valid physiological intervals.
+    missing_data_policy: Evaluate bounds strictly on non-null Train and Unlabeled
+      values.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: k_hard_leak_top40=0, k_impossible_cols=10
+    formula: count(Top40 AUC>=0.90); count(impossible_train_n >= 1)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows across 175 predictors
+  verdict:
+    outcome: 'TRUE'
+    'true': k_hard_leak_top40 == 0 AND k_impossible_cols >= 3
+    'false': k_hard_leak_top40 >= 1 OR k_impossible_cols == 0
+    inconclusive: k_hard_leak_top40 == 0 AND 1 <= k_impossible_cols <= 2
+  action:
+    on_true: 'Publish feature_triage_table.csv and escalate impossible cols to Stage
+      4; Spawns #I9.1.'
+    on_false: 'Quarantine leaky cols or continue Stage 4 consistency checks; Spawns
+      #I9.1.'
+    on_inconclusive: 'Audit the 1-2 flagged cols in Stage 4; Spawns #I9.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2);
+      data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
+- id: I9.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I9. At least 1 APACHE diagnosis code (n>=30) has >= 85% diabetes
+      prevalence, and dropping glucose + diagnosis lowers grouped AUC by >= 0.04 while
+      retaining non-glucose AUC >= 0.72.'
+  methodology:
+    technique: High-prevalence diagnosis code screen and grouped HGB ablation
+    parameters:
+      min_code_n: 30
+      prev_min_pct: 85.0
+    assumptions:
+    - AUC >= 0.72 without glucose/diagnosis confirms broad systemic signal.
+    missing_data_policy: Missing diagnosis codes mapped to '__MISSING__'.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: k_diag_ge85=0 (pos_share=0.00%), auc_all175=0.84963, auc_no_gluc_diag=0.74388,
+      delta=0.10575, codes=[]
+    formula: OOF_AUC(All-175) - OOF_AUC(All-175 \ (glucose U diagnosis))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': k_diag_ge85 >= 1 AND delta >= 0.04 AND auc_no_gluc_diag >= 0.72
+    'false': k_diag_ge85 == 0 AND delta < 0.02
+    inconclusive: Partial diagnosis code tail or glucose reliance
+  action:
+    on_true: Document valid admission DKA codes and strong non-glucose signal -> Proceeds
+      Stage 4.
+    on_false: Document low diagnosis/glucose dependency -> Proceeds Stage 4.
+    on_inconclusive: Inspect diagnosis codes and non-glucose baseline in Stage 5 ->
+      Proceeds Stage 4.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    - d1_glucose_max
+    - d1_glucose_min
+    - diabetes_mellitus
+    - glucose_apache
+    - h1_glucose_max
+    - h1_glucose_min
+    - hospital_id
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: '2026-11-19T06:53:14+08:00'
