@@ -34,9 +34,29 @@ I only assume these methods below from a single glimpse, and these methods origi
 
 > **#I1.1 (TRUE)**: Found 13 metadata discrepancies in `DataDictionaryWiDS2021.csv` (absent `icu_admit_type`, undocumented `Unnamed: 0`, `bmi`/`apache_2_diagnosis`/`apache_3j_diagnosis` mistyped `string`, `albumin_max` `"lowest"` typo, `inr` unit `micromol/L`, `pao2fio2ratio` copied from `fio2`) documented in [data_dictionary.md](../docs/data_dictionary.md). `hospital_id` has `0` overlap (`204` train vs `190` test), while `icu_id` unexpectedly overlaps on `264` IDs (`328` train vs `302` test).
 
-- [ ] **Train vs. Unlabeled Test Distribution Shift & Group Overlap Check**
+- [x] **Train vs. Unlabeled Test Distribution Shift & Group Overlap Check**
 
-> `hospital_id` has `204` unique hospitals in train and `190` in test with **0 overlap** between them. If we use a random train/val split, models can memorize hospital-specific coding/lab practices and overfit; checking covariate shift (adversarial validation AUC) and enforcing `StratifiedGroupKFold(groups=hospital_id)` ensures our local CV reflects true out-of-hospital generalization on the test set.
+> **#I4 (INCONCLUSIVE -> resolved via #I4.1=TRUE), #I5 (INCONCLUSIVE), #I5.1 (FALSE)**: Confirmed `0` hospital overlap (`204` train vs `190` test) and `adv_auc_raw_grouped = 0.5913` under `StratifiedGroupKFold(groups=hospital_id)` (vs. inflated `0.7536` under random `StratifiedKFold`). Zero features exceed `PSI >= 0.10`; locked 5-fold `StratifiedGroupKFold(groups=hospital_id)` as mandatory CV splitter.
+
+  - [x] **[I4] Sub-Analysis: Facility-Key Collision (`icu_id` across `hospital_id`) & Grouping Hierarchy Audit**
+
+  > **#I4 (INCONCLUSIVE)**: `within_train_multi_hosp_icu_share = 0.00%` (`NMI = 0.9293`, 1-to-1 within Train), yet `72.13%` of combined `icu_id` values (`max=2` hospitals across `366` IDs) collide across Train and Unlabeled hospitals ([stage2_icu_hospital_mapping.csv](../reports/findings/stage2_icu_hospital_mapping.csv)).
+
+  - [x] **[I4.1] Sub-Analysis: `StratifiedGroupKFold(groups=hospital_id)` Fold Balance & `icu_id` Proxy-Leakage Test**
+
+  > **#I4.1 (TRUE)**: 5-fold `StratifiedGroupKFold` satisfies strict tolerances (`fold_share_range=0.104 pp`, `fold_target_range=0.150 pp`, `hospital_overlap=0`, all 9 duplicate rows of `hospital_id=167` in `1` fold). `icu_id` target-encoding AUC collapses from `0.6027` (random `StratifiedKFold`) to `0.4993` (grouped `StratifiedGroupKFold`).
+
+  - [no] Retain `icu_id` as a model feature or use random `StratifiedKFold` CV
+
+  > **#I4.1 (TRUE) & #I5.1 (FALSE)**: Rejected (`- [no]`) because `icu_id` leaks `hospital_id` inside Train (`0.6027` -> `0.4993`) and actively degrades out-of-hospital adversarial generalization (`adv_auc_with_icu_grouped = 0.3831`, `Δ_icu = -0.2082`).
+
+  - [x] **[I5] Sub-Analysis: Out-of-Hospital Adversarial Validation (`StratifiedKFold` vs. `StratifiedGroupKFold`)**
+
+  > **#I5 (INCONCLUSIVE)**: Moderate out-of-hospital shift (`0.5913`, vs `0.7536` random SKF); top driver is `age` (`perm_imp=0.0418`, `KS=0.0376`, `PSI=0.0136`), followed by `h1_heartrate_min` (`0.0062`) and `d1_potassium_max` (`0.0060`) ([stage2_adversarial_validation.csv](../reports/findings/stage2_adversarial_validation.csv)).
+
+  - [no] **[I5.1] Sub-Analysis: Missingness-Shift (`age`/`bmi`/`weight`) vs. Value-Shift & `icu_id` Decomposition**
+
+  > **#I5.1 (FALSE)**: Rejected (`- [no]`) hypothesis that missingness patterns alone drive test shift: `adv_auc_miss_only = 0.4677` and fold-imputing all values yields `0.5931` (`Δ_miss = -0.0017`), though imputing `age/bmi/weight` slightly lowers shift to `0.5787`.
 
 - [x] **Duplicate & Near-Duplicate Row Investigation** (excluding IDs)
 
@@ -50,9 +70,17 @@ I only assume these methods below from a single glimpse, and these methods origi
 
 > **#I2.2 (TRUE)**: Verified via `classify_print_vars` that AutoViz projected the dataset to `(130157, 31)`, creating 1 extra projection collision on top of the 8 redundant copies (`duplicated(keep='first') = 9`, `keep=False = 10`), whereas full 175-feature space has `8` redundant copies (`9` total rows).
 
-- [ ] **Target Variable (`diabetes_mellitus`) Class Balance & Subgroup Prevalence Analysis**
+- [x] **Target Variable (`diabetes_mellitus`) Class Balance & Subgroup Prevalence Analysis**
 
-> The target is imbalanced (`78.37%` negative vs. `21.63%` positive). Checking whether diabetes prevalence varies systematically across `hospital_id`, `icu_type`, `age`, `ethnicity`, or `elective_surgery` reveals baseline risk priors and determines whether class weighting, stratified grouping, and probability calibration (for ROC-AUC / log-loss) are needed.
+> **#I6 (TRUE)**: Confirmed strong inter-hospital (`188` hospitals with `n >= 30`, `chi2 p=0.0`, `IQR = 8.82 pp`, `P10=8.96%`, `P90=29.17%`) and subgroup heterogeneity across `3/4` core strata (`age_bin` `13.59 pp`, `ethnicity` `18.14 pp`, `icu_type` `11.86 pp`, vs `elective_surgery` `0.52 pp`, `p=0.078`), requiring probability calibration (Log-Loss/Brier) alongside ROC-AUC ([stage2_target_prevalence.csv](../reports/findings/stage2_target_prevalence.csv)).
+
+  - [x] **[I6] Sub-Analysis: Inter-Hospital Target Variance & Clinical/Demographic Subgroup Prevalence Audit**
+
+  > **#I6 (TRUE)**: `diabetes_mellitus=1` is `21.63%` overall, spanning `11.22%` (`bmi < 18.5`) to `36.31%` (`bmi 40+`, `25.09 pp` range) and surging from `20.87%` (`arf_apache=0`) to `47.94%` (`arf_apache=1`).
+
+  - [x] **[I6.1] Sub-Analysis: Missing-Stratum Target Bias (`age`/`bmi`/`weight`/`ethnicity`) & Projected Unlabeled Prior Shift**
+
+  > **#I6.1 (INCONCLUSIVE)**: Detected strong target-rate separation (`k_miss_bias = 2`) in `age` missingness (`13.23%` vs `21.96%`, `|Δ|=8.73 pp`, `p=9.94e-49`) and `ethnicity` (`13.99%` vs `21.72%`, `|Δ|=7.73 pp`, `p=1.29e-13`), though standardized Train->Unlabeled base-rate shift remains small (`max = +0.197 pp` via `age_bin`).
 
 - [x] **Data Dictionary Grouping & Clinical Domain Mapping** (`DataDictionaryWiDS2021.csv`)
 

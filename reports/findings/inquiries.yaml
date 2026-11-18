@@ -359,3 +359,311 @@ inquiries:
     extraction:
       script: scripts/stage1_schema_and_sparsity.py
       timestamp: '2026-11-19T06:36:10+08:00'
+- id: I4
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: Across TrainingWiDS2021.csv and UnlabeledWiDS2021.csv, icu_id is recycled
+      across distinct hospital_id values (>= 50% combined and > 0% within-train collisions).
+  methodology:
+    technique: Bipartite (hospital_id, icu_id) cardinality and NMI audit
+    parameters:
+      splits:
+      - train
+      - test
+      - combined
+    assumptions:
+    - Each encounter maps to one hospital_id and icu_id.
+    missing_data_policy: Null IDs tallied and excluded from pair cardinality.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: 'comb_multi=72.13%, tr_multi=0.00%, max_h_all=2, max_h_tr=1, nmi_tr=0.9293,
+      hosp_q={''0.0'': 2, ''0.25'': 163, ''0.5'': 373, ''0.75'': 867, ''1.0'': 4306}'
+    formula: '|{icu_id : nunique(hospital_id) >= 2}| / |unique(icu_id)|'
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': comb_multi >= 0.50 AND tr_multi > 0.0
+    'false': comb_multi == 0.0 AND tr_multi == 0.0
+    inconclusive: Mixed collision across Train vs Combined
+  action:
+    on_true: 'Lock hospital_id as CV group key; audit icu_id leakage in #I4.1 -> Ref
+      to #I5.'
+    on_false: 'Re-audit facility ID parsing -> Ref to #I5.'
+    on_inconclusive: 'Spawns #I4.1 to test icu_id proxy leakage -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
+- id: I4.1
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I4. 5-fold StratifiedGroupKFold(groups=hospital_id) meets fold
+      balance tolerances while icu_id target-encoding leaks under StratifiedKFold
+      (>=0.55) and collapses under grouped CV (<0.52).'
+  methodology:
+    technique: 5-fold StratifiedGroupKFold balance check and OOF smoothed icu_id TE
+      test
+    parameters:
+      n_splits: 5
+      smoothing_m: 10.0
+      random_state: 42
+    assumptions:
+    - Grouped CV isolates true out-of-hospital generalization.
+    missing_data_policy: Map null icu_id to '__MISSING__'.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: fold_share_rng=0.104pp, fold_rate_rng=0.150pp, hosp_overlap=0, dup167_folds=1,
+      auc_rand=0.6027, auc_grp=0.4993
+    formula: OOF ROC-AUC of smoothed icu_id target encoding under SKF vs SGKF
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: 'TRUE'
+    'true': Balance passes AND auc_rand >= 0.55 AND auc_grp < 0.52
+    'false': Fold balance tolerances violated
+    inconclusive: Partial balance or icu_id leakage signal
+  action:
+    on_true: 'Lock 5-fold StratifiedGroupKFold(groups=hospital_id) and flag icu_id
+      -> Ref to #I5.'
+    on_false: 'Adjust StratifiedGroupKFold splits before Stage 6 -> Ref to #I5.'
+    on_inconclusive: 'Lock StratifiedGroupKFold and test icu_id ablation in Stage
+      5/6 -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - encounter_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
+- id: I5
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: The 175 clinical predictors (F_clinical) exhibit material out-of-hospital
+      covariate shift between Train and Unlabeled (grouped Adversarial AUC >= 0.65).
+  methodology:
+    technique: 5-fold StratifiedGroupKFold Adversarial Validation with HistGradientBoosting
+    parameters:
+      n_splits: 5
+      max_iter: 100
+      learning_rate: 0.08
+    assumptions:
+    - Disjoint hospital_id prevents hospital memorization under SGKF.
+    missing_data_policy: Preserve NaN natively in HistGradientBoostingClassifier.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: adv_auc_raw_grouped=0.5913, adv_auc_raw_random=0.7536, top3=['age', 'h1_heartrate_min',
+      'd1_potassium_max']
+    formula: 5-fold OOF ROC-AUC predicting is_test over all 140,391 rows
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - 130,157 Train (is_test=0) + 10,234 Unlabeled (is_test=1) on F_clinical
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': adv_auc_raw_grouped >= 0.65
+    'false': adv_auc_raw_grouped < 0.58
+    inconclusive: 0.58 <= adv_auc_raw_grouped < 0.65
+  action:
+    on_true: 'Escalate top shift drivers; Spawns #I5.1; Ref to #I6.'
+    on_false: 'Document low out-of-hospital shift; Spawns #I5.1; Ref to #I6.'
+    on_inconclusive: 'Spawns #I5.1 to isolate missingness vs value shift -> Ref to
+      #I6.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
+- id: I5.1
+  status: 'FALSE'
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I5. Adversarial discriminability is substantially driven by
+      missingness-pattern shifts (bmi, weight, age) or icu_id collisions.'
+  methodology:
+    technique: Nested Adversarial Validation ablation and univariate KS/PSI drift
+      audit
+    parameters:
+      n_splits: 5
+      psi_bins: 10
+    assumptions:
+    - Comparing raw vs fold-imputed AUC isolates missingness-pattern signal.
+    missing_data_policy: Median/mode imputers fit strictly inside each training fold.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: auc_imp=0.5931, auc_miss_only=0.4677, auc_with_icu=0.3831, auc_no_anthro=0.5787,
+      delta_miss=-0.0017, delta_icu=-0.2082, psi_ge_0.10=0
+    formula: delta_miss = auc_raw - auc_imp; delta_icu = auc_with_icu - auc_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - All 140,391 combined rows grouped by hospital_id
+  verdict:
+    outcome: 'FALSE'
+    'true': (auc_miss_only >= 0.60 AND delta_miss >= 0.03) OR delta_icu >= 0.03
+    'false': auc_miss_only < 0.55 AND delta_miss < 0.01 AND delta_icu < 0.01
+    inconclusive: Moderate partial missingness or icu_id shift
+  action:
+    on_true: 'Flag shifted missingness/icu_id hazards for Stage 5/6 ablation -> Ref
+      to #I6.'
+    on_false: 'Attribute shift to clinical distributions via PSI/KS -> Ref to #I6.'
+    on_inconclusive: 'Track partial shift drivers and PSI>=0.10 cols for Stage 6 ->
+      Ref to #I6.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - icu_id
+    - age
+    - bmi
+    - weight
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
+- id: I6
+  status: 'TRUE'
+  hypothesis:
+    polarity: +
+    claim: Diabetes prevalence (~21.63%) varies substantially across hospitals (IQR
+      >= 4.0 pp, chi2 p < 0.001) and across >= 3 of 4 core strata (age_bin, ethnicity,
+      icu_type, elective_surgery; p < 0.001 and range >= 3.0 pp).
+  methodology:
+    technique: Hospital-level Wilson CI/IQR spread and subgroup Pearson chi-square
+      tests
+    parameters:
+      min_hospital_rows: 30
+      alpha: 0.001
+      min_range_pp: 3.0
+    assumptions:
+    - Hospitals with n >= 30 yield stable empirical prevalence estimates.
+    missing_data_policy: Retain nulls as explicit '__MISSING__' category.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: pos_rate=21.63%, hosp_chi2_p=0.000e+00, hosp_iqr=8.82pp (P10=8.96%, P90=29.17%,
+      n_hosp30=188), k_sig_core=3/4
+    formula: IQR(prev_hosp | n>=30); count(core strata with chi2_p<0.001 & range>=3pp)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 TrainingWiDS2021.csv rows
+  verdict:
+    outcome: 'TRUE'
+    'true': hosp_chi2_p < 0.001 AND hosp_iqr >= 4.0 AND k_sig_core >= 3
+    'false': (hosp_chi2_p >= 0.05 OR hosp_iqr < 2.0) AND k_sig_core == 0
+    inconclusive: Partial hospital or subgroup heterogeneity
+  action:
+    on_true: 'Require Log-Loss/Brier calibration audit + OOF aggregations; Spawns
+      #I6.1.'
+    on_false: 'Proceed with uniform prior assumption and Spawns #I6.1.'
+    on_inconclusive: 'Inspect heterogeneity table in stage2_target_prevalence.csv;
+      Spawns #I6.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - age
+    - bmi
+    - ethnicity
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
+- id: I6.1
+  status: INCONCLUSIVE
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I6 and #I3.1. Missing strata in age/bmi/weight/ethnicity differ
+      by >= 2.0 pp in diabetes prevalence (p < 0.01), and Train-to-Unlabeled composition
+      shifts imply >= 0.50 pp projected target prior shift.'
+  methodology:
+    technique: Missing-vs-present chi-square tests and direct demographic standardization
+    parameters:
+      alpha: 0.01
+      min_prev_diff_pp: 2.0
+      min_prior_shift_pp: 0.5
+    assumptions:
+    - Train conditional prevalence within strata holds to first order in Test.
+    missing_data_policy: Explicit '__MISSING__' stratum included in standardization.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: 'k_miss_bias=2, max_shift_pp=0.197pp, std_shifts={''age_bin'': 0.1974,
+      ''bmi_bin'': -0.0837, ''ethnicity'': -0.128, ''icu_type'': 0.0143}, details=[{''col'':
+      ''age'', ''n_na'': 4988, ''prev_na_pct'': 13.232, ''prev_present_pct'': 21.963,
+      ''abs_diff_pp'': 8.731, ''chi2_p'': 9.944485736044577e-49}, {''col'': ''bmi'',
+      ''n_na'': 4490, ''prev_na_pct'': 20.379, ''prev_present_pct'': 21.673, ''abs_diff_pp'':
+      1.295, ''chi2_p'': 0.04018949937956313}, {''col'': ''weight'', ''n_na'': 3463,
+      ''prev_na_pct'': 20.993, ''prev_present_pct'': 21.646, ''abs_diff_pp'': 0.652,
+      ''chi2_p'': 0.3685308476988922}, {''col'': ''ethnicity'', ''n_na'': 1587, ''prev_na_pct'':
+      13.989, ''prev_present_pct'': 21.723, ''abs_diff_pp'': 7.734, ''chi2_p'': 1.2906865882301525e-13}]'
+    formula: sum_s P_test(s)*P_train(y=1|s) - P_train(y=1)
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: INCONCLUSIVE
+    'true': k_miss_bias >= 1 AND max_shift_pp >= 0.50
+    'false': k_miss_bias == 0 AND max_shift_pp < 0.20
+    inconclusive: Mixed missing-stratum bias and composition prior shift
+  action:
+    on_true: Escalate age/bmi/weight missingness bias to Stage 4 MNAR -> Proceeds
+      Stage 3.
+    on_false: Confirm minimal prior distortion -> Proceeds Stage 3.
+    on_inconclusive: Log exact missing-stratum bias for Stage 4 MNAR audit -> Proceeds
+      Stage 3.
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - age
+    - bmi
+    - weight
+    - ethnicity
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: '2026-11-19T06:40:30+08:00'
