@@ -1,0 +1,10 @@
+encounter_id,hospital_id,icu_id,icu_stay_type,diabetes_mellitus,match_type
+159417,167,903,admit,0,exact_F_clinical
+244601,167,903,admit,0,exact_F_clinical
+150518,167,903,admit,0,exact_F_clinical
+264918,167,903,admit,0,exact_F_clinical
+225543,167,903,admit,0,exact_F_clinical
+147789,167,903,admit,0,exact_F_clinical
+234525,167,903,admit,0,exact_F_clinical
+189191,167,903,admit,0,exact_F_clinical
+197188,167,903,admit,0,exact_F_clinical

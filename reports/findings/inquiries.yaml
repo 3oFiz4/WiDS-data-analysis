@@ -1,0 +1,1964 @@
+problem: Audit schema alignment, structural/constant columns, non-ID duplicates, and
+  domain/temporal sparsity across TrainingWiDS2021.csv and UnlabeledWiDS2021.csv.
+inquiries:
+- id: I1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Excluding diabetes_mellitus, Train and Unlabeled share an identical 180-column
+      predictor schema with >=3 structural drop columns and >=1 near-constant (>=99%).
+  methodology:
+    technique: Full-table predictor schema comparison, cardinality audit, and modal
+      dominance
+    parameters:
+      constant_nunique_max: 1
+      near_constant_mode_share_min: 0.99
+    assumptions:
+    - '''NA'' and empty fields denote missing observations in both CSVs.'
+    missing_data_policy: Explicit null tally; nunique and mode_share over non-null
+      rows.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: 'schema_aligned=True, |C_const_id|=3 ([''Unnamed: 0'', ''encounter_id'',
+      ''readmission_status'']), |C_near_const|=3 ([''aids'', ''leukemia'', ''lymphoma''])'
+    formula: schema_aligned AND |C_const_id| >= 3 AND |C_near_const| >= 1
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - All 130,157 Train rows and 10,234 Unlabeled rows; isolate hospital/icu IDs
+  verdict:
+    outcome: "TRUE"
+    'true': schema_aligned AND |C_const_id| >= 3 AND |C_near_const| >= 1
+    'false': NOT schema_aligned OR (|C_const_id|==0 AND |C_near_const|==0)
+    inconclusive: Partial structural/near-constant counts
+  action:
+    on_true: 'Lock [''Unnamed: 0'', ''encounter_id'', ''readmission_status''] drop
+      list; Spawns #I1.1; Ref to #I2.'
+    on_false: 'Spawns #I1.1 to diagnose schema mismatch.'
+    on_inconclusive: 'Spawns #I1.1 and Ref to #I2.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 'Unnamed: 0 .. diabetes_mellitus (181 cols)'
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I1.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I1. DataDictionaryWiDS2021.csv has schema/metadata drift vs
+      CSVs while hospital_id has zero overlap between Train and Unlabeled.'
+  methodology:
+    technique: Symmetric dictionary-CSV reconciliation and facility ID set intersections
+    parameters:
+      id_columns:
+      - hospital_id
+      - icu_id
+      - encounter_id
+    assumptions:
+    - Dictionary numeric fields parse cleanly as float64.
+    missing_data_policy: Nulls excluded from coercion checks and ID set intersections.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: 'symdiff=2 (dict_only=[''icu_admit_type''], csv_only=[''Unnamed: 0'']),
+      mismatches=13, hospital_overlap=0, icu_overlap=264, encounter_overlap=0'
+    formula: '|(Dict \ CSV) U (CSV \ Dict)|; |Train[id] & Test[id]|'
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - All 181 DataDictionary rows vs Train/Unlabeled CSVs
+  verdict:
+    outcome: "TRUE"
+    'true': symdiff >= 2 AND mismatches >= 1 AND hospital_overlap == 0
+    'false': symdiff == 0 AND mismatches == 0 AND hospital_overlap > 0
+    inconclusive: Mixed drift and ID overlap
+  action:
+    on_true: 'Update docs/data_dictionary.md and lock StratifiedGroupKFold -> Ref
+      to #I4.'
+    on_false: 'Confirm dictionary fidelity -> Ref to #I4.'
+    on_inconclusive: 'Log partial overlap in stage1_schema_sparsity.md -> Ref to #I4.'
+  source:
+    file: data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860);
+      data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - encounter_id
+    - bmi
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I2
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: Excluding structural IDs, constants, and target, TrainingWiDS2021.csv has
+      < 9 exact 175-col clinical duplicates, showing AutoViz's 9 duplicates came from
+      column reduction.
+  methodology:
+    technique: Progressive row-duplication profiling across F_clinical and pruned
+      subsets
+    parameters:
+      duplicate_keep: first
+    assumptions:
+    - NaN == NaN positional matching across scopes.
+    missing_data_policy: NaN preserved across raw scopes.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: F_clinical=8, F_facility=8, F_80pct=8, F_50pct=8, F_autoviz_pre_dq=8
+    formula: sum(df[scope].duplicated(keep='first'))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows in TrainingWiDS2021.csv
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': N_dup_clinical < 9 AND 9 in raw pruned scopes
+    'false': N_dup_clinical >= 9
+    inconclusive: N_dup_clinical < 9 AND 9 not reproduced without AutoViz trace
+  action:
+    on_true: 'Retain clinical rows, Spawns #I2.1, Ref to #I3.'
+    on_false: 'Audit duplicate cluster and deduplicate; Spawns #I2.1, Ref to #I3.'
+    on_inconclusive: 'Spawns #I2.2 to trace AutoViz 30-col FixDQ duplicates; Spawns
+      #I2.1, Ref to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictor columns)
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I2.1
+  status: "FALSE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I2. Train contains >= 10 within-hospital demographic near-duplicate
+      pairs (>=90% agreement) or >= 1 cross-split F_clinical collision with Unlabeled.'
+  methodology:
+    technique: Cross-split row hashing and within-hospital demographic blocking
+    parameters:
+      min_mutually_non_null_cols: 30
+      agreement_min: 0.9
+    assumptions:
+    - Repeated hospital stays preserve age, gender, ethnicity, height, weight.
+    missing_data_policy: Score agreement over mutually non-null predictors.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: N_cross_exact=0, N_near_dup_transfer=0
+    formula: cross_exact_matches; within_hospital_near_dup_pairs
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows excluding exact 175-col dups
+  verdict:
+    outcome: "FALSE"
+    'true': N_cross_exact >= 1 OR N_near_dup_transfer >= 10
+    'false': N_cross_exact == 0 AND N_near_dup_transfer == 0
+    inconclusive: N_cross_exact == 0 AND 1 <= N_near_dup_transfer < 10
+  action:
+    on_true: 'Enforce StratifiedGroupKFold(groups=hospital_id) -> Ref to #I4.'
+    on_false: 'Confirm zero cross-split collisions or transfer pairs -> Ref to #I3.'
+    on_inconclusive: 'Log 1-9 pairs in stage1_duplicate_audit.csv -> Ref to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - age
+    - gender
+    - ethnicity
+    - height
+    - weight
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I2.2
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I2. AutoViz''s 9 flagged duplicates arise strictly after AutoViz
+      caps predictors to <= 30 columns rather than existing as 9 excess copies in
+      175 cols.'
+  methodology:
+    technique: Direct trace of AutoViz classify_print_vars 30-predictor reduction
+    parameters:
+      max_cols_analyzed: 30
+    assumptions:
+    - AutoViz capped predictors to 30 before counting duplicate rows.
+    missing_data_policy: Exact NaN positional matching across AutoViz dft and raw
+      175 cols.
+    script_ref: scripts/stage1_autoviz_dup_trace.py
+  evidence:
+    type: N
+    metric: autoviz_dft_shape=(130157, 31), dft_dup_keep_first=9, dft_dup_keep_false=10,
+      raw_175_keep_first=8, raw_175_keep_false=9, dup_row_indices=[89589, 89608, 89616,
+      89629, 89637, 89659, 89662, 89664, 89665, 89697], encounter_ids=[159417, 244601,
+      150518, 264918, 225543, 147789, 234525, 232838, 189191, 197188]
+    formula: count(dft.duplicated(keep='first')) vs count(raw_175.duplicated(keep='first'))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows in TrainingWiDS2021.csv
+  verdict:
+    outcome: "TRUE"
+    'true': autoviz_traced_dup_count == 9 AND N_dup_clinical < 9
+    'false': autoviz_traced_dup_count != 9
+    inconclusive: AutoViz trace fails or subsamples
+  action:
+    on_true: 'Confirm 9th dup is a 30-col projection collision; audit 8 copies ->
+      Ref to #I3.'
+    on_false: 'Rely on deterministic F_clinical deduplication audit -> Ref to #I3.'
+    on_inconclusive: 'Rely on deterministic F_clinical deduplication audit -> Ref
+      to #I3.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - age
+    - height
+    - pre_icu_los_days
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    - fio2_apache
+    - map_apache
+    - pao2_apache
+    - ph_apache
+    - urineoutput_apache
+    - d1_diasbp_invasive_max
+    - d1_diasbp_invasive_min
+    - d1_mbp_invasive_max
+    - d1_mbp_invasive_min
+    - d1_resprate_min
+    - d1_spo2_max
+    - d1_spo2_min
+    - d1_sysbp_invasive_max
+    - d1_sysbp_invasive_min
+    - d1_temp_max
+    - h1_diasbp_invasive_max
+    - h1_mbp_invasive_max
+    - h1_resprate_max
+    - h1_resprate_min
+    - h1_spo2_max
+    - h1_spo2_min
+    - h1_sysbp_invasive_max
+    - d1_glucose_min
+    - d1_potassium_max
+    - d1_potassium_min
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage1_autoviz_dup_trace.py
+      timestamp: "2026-11-19T06:36:37+08:00"
+- id: I3
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Across 64 matched (h1_, d1_) pairs, h1_ features exhibit >= 5.0 pp higher
+      median missingness than d1_ twins, concentrating >= 60% of >50%-missing cols
+      in h1_/blood gas.
+  methodology:
+    technique: Domain/window taxonomy mapping and one-sided paired Wilcoxon signed-rank
+      test
+    parameters:
+      matched_pairs_n: 64
+      alpha: 0.01
+      alternative: greater
+    assumptions:
+    - Each h1_clinical_stem pairs 1-to-1 with d1_clinical_stem.
+    missing_data_policy: Explicit null rate over full Train and Unlabeled tables.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: n_pairs=64, med_delta_tr=17.77pp (p=3.772e-12), conc_tr=71.23%, med_delta_te=18.82pp
+      (p=3.772e-12), conc_te=70.27%
+    formula: median(miss(h1)-miss(d1)); |{c in (h1_ U blood_gas):miss>50%}| / |{c:miss>50%}|
+  condition:
+    timeframe: Static WiDS Datathon 2021 dataset snapshot
+    filters:
+    - 64 matched (h1_, d1_) pairs and all 180 shared predictors
+  verdict:
+    outcome: "TRUE"
+    'true': median_delta >= 5.0 AND p < 0.01 AND conc >= 60% in BOTH splits
+    'false': median_delta <= 0 OR p >= 0.05 OR conc < 40% in EITHER split
+    inconclusive: Borderline concentration or p-value
+  action:
+    on_true: 'Reject blind >80%-null dropping; retain h1_/blood-gas for MNAR testing;
+      Spawns #I3.1.'
+    on_false: 'Audit alternative sparsity drivers and Spawns #I3.1.'
+    on_inconclusive: 'Inspect borderline pairs and Spawns #I3.1.'
+  source:
+    file: data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860);
+      data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 h1_* and 64 d1_* columns; labs blood gas
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I3.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I3. At least 10 predictors shift >= 5.0 pp in missingness between
+      Train and Unlabeled or reach >= 95.0% null in UnlabeledWiDS2021.csv.'
+  methodology:
+    technique: Cross-split column missingness delta and Spearman rank-order stability
+    parameters:
+      abs_shift_pp: 5.0
+      extreme_null_pct: 95.0
+    assumptions:
+    - Disjoint hospitals may use different EHR lab order panels.
+    missing_data_policy: Explicit null percentage across all rows in both CSVs.
+    script_ref: scripts/stage1_schema_and_sparsity.py
+  evidence:
+    type: N
+    metric: shifted_ge5pp=2, unlabeled_ge95pct=0, spearman_rho=0.9955, max_shift=6.47pp
+    formula: count(|miss_tr - miss_te| >= 5.0); Spearman(miss_tr, miss_te)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 180 shared predictors across Train and Unlabeled
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': shifted_ge5pp >= 10 OR unlabeled_ge95pct >= 1
+    'false': shifted_ge5pp == 0 AND unlabeled_ge95pct == 0 AND rho >= 0.95
+    inconclusive: 1-9 shifted predictors without >=95% null columns
+  action:
+    on_true: 'Escalate shifted columns to Stage 2 Adversarial Validation -> Ref to
+      #I5.'
+    on_false: 'Confirm missingness stability -> Ref to #I4.'
+    on_inconclusive: 'Escalate the 2 shifted cols (bmi, weight) to Stage 2 shift check
+      -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 9faf954
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 180 shared predictors
+    extraction:
+      script: scripts/stage1_schema_and_sparsity.py
+      timestamp: "2026-11-19T06:36:10+08:00"
+- id: I4
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: Across TrainingWiDS2021.csv and UnlabeledWiDS2021.csv, icu_id is recycled
+      across distinct hospital_id values (>= 50% combined and > 0% within-train collisions).
+  methodology:
+    technique: Bipartite (hospital_id, icu_id) cardinality and NMI audit
+    parameters:
+      splits:
+      - train
+      - test
+      - combined
+    assumptions:
+    - Each encounter maps to one hospital_id and icu_id.
+    missing_data_policy: Null IDs tallied and excluded from pair cardinality.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: 'comb_multi=72.13%, tr_multi=0.00%, max_h_all=2, max_h_tr=1, nmi_tr=0.9293,
+      hosp_q={''0.0'': 2, ''0.25'': 163, ''0.5'': 373, ''0.75'': 867, ''1.0'': 4306}'
+    formula: '|{icu_id : nunique(hospital_id) >= 2}| / |unique(icu_id)|'
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': comb_multi >= 0.50 AND tr_multi > 0.0
+    'false': comb_multi == 0.0 AND tr_multi == 0.0
+    inconclusive: Mixed collision across Train vs Combined
+  action:
+    on_true: 'Lock hospital_id as CV group key; audit icu_id leakage in #I4.1 -> Ref
+      to #I5.'
+    on_false: 'Re-audit facility ID parsing -> Ref to #I5.'
+    on_inconclusive: 'Spawns #I4.1 to test icu_id proxy leakage -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I4.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I4. 5-fold StratifiedGroupKFold(groups=hospital_id) meets fold
+      balance tolerances while icu_id target-encoding leaks under StratifiedKFold
+      (>=0.55) and collapses under grouped CV (<0.52).'
+  methodology:
+    technique: 5-fold StratifiedGroupKFold balance check and OOF smoothed icu_id TE
+      test
+    parameters:
+      n_splits: 5
+      smoothing_m: 10.0
+      random_state: 42
+    assumptions:
+    - Grouped CV isolates true out-of-hospital generalization.
+    missing_data_policy: Map null icu_id to '__MISSING__'.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: fold_share_rng=0.104pp, fold_rate_rng=0.150pp, hosp_overlap=0, dup167_folds=1,
+      auc_rand=0.6027, auc_grp=0.4993
+    formula: OOF ROC-AUC of smoothed icu_id target encoding under SKF vs SGKF
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "TRUE"
+    'true': Balance passes AND auc_rand >= 0.55 AND auc_grp < 0.52
+    'false': Fold balance tolerances violated
+    inconclusive: Partial balance or icu_id leakage signal
+  action:
+    on_true: 'Lock 5-fold StratifiedGroupKFold(groups=hospital_id) and flag icu_id
+      -> Ref to #I5.'
+    on_false: 'Adjust StratifiedGroupKFold splits before Stage 6 -> Ref to #I5.'
+    on_inconclusive: 'Lock StratifiedGroupKFold and test icu_id ablation in Stage
+      5/6 -> Ref to #I5.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - icu_id
+    - encounter_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I5
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: The 175 clinical predictors (F_clinical) exhibit material out-of-hospital
+      covariate shift between Train and Unlabeled (grouped Adversarial AUC >= 0.65).
+  methodology:
+    technique: 5-fold StratifiedGroupKFold Adversarial Validation with HistGradientBoosting
+    parameters:
+      n_splits: 5
+      max_iter: 100
+      learning_rate: 0.08
+    assumptions:
+    - Disjoint hospital_id prevents hospital memorization under SGKF.
+    missing_data_policy: Preserve NaN natively in HistGradientBoostingClassifier.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: adv_auc_raw_grouped=0.5913, adv_auc_raw_random=0.7536, top3=['age', 'h1_heartrate_min',
+      'd1_potassium_max']
+    formula: 5-fold OOF ROC-AUC predicting is_test over all 140,391 rows
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - 130,157 Train (is_test=0) + 10,234 Unlabeled (is_test=1) on F_clinical
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': adv_auc_raw_grouped >= 0.65
+    'false': adv_auc_raw_grouped < 0.58
+    inconclusive: 0.58 <= adv_auc_raw_grouped < 0.65
+  action:
+    on_true: 'Escalate top shift drivers; Spawns #I5.1; Ref to #I6.'
+    on_false: 'Document low out-of-hospital shift; Spawns #I5.1; Ref to #I6.'
+    on_inconclusive: 'Spawns #I5.1 to isolate missingness vs value shift -> Ref to
+      #I6.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I5.1
+  status: "FALSE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I5. Adversarial discriminability is substantially driven by
+      missingness-pattern shifts (bmi, weight, age) or icu_id collisions.'
+  methodology:
+    technique: Nested Adversarial Validation ablation and univariate KS/PSI drift
+      audit
+    parameters:
+      n_splits: 5
+      psi_bins: 10
+    assumptions:
+    - Comparing raw vs fold-imputed AUC isolates missingness-pattern signal.
+    missing_data_policy: Median/mode imputers fit strictly inside each training fold.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: auc_imp=0.5931, auc_miss_only=0.4677, auc_with_icu=0.3831, auc_no_anthro=0.5787,
+      delta_miss=-0.0017, delta_icu=-0.2082, psi_ge_0.10=0
+    formula: delta_miss = auc_raw - auc_imp; delta_icu = auc_with_icu - auc_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - All 140,391 combined rows grouped by hospital_id
+  verdict:
+    outcome: "FALSE"
+    'true': (auc_miss_only >= 0.60 AND delta_miss >= 0.03) OR delta_icu >= 0.03
+    'false': auc_miss_only < 0.55 AND delta_miss < 0.01 AND delta_icu < 0.01
+    inconclusive: Moderate partial missingness or icu_id shift
+  action:
+    on_true: 'Flag shifted missingness/icu_id hazards for Stage 5/6 ablation -> Ref
+      to #I6.'
+    on_false: 'Attribute shift to clinical distributions via PSI/KS -> Ref to #I6.'
+    on_inconclusive: 'Track partial shift drivers and PSI>=0.10 cols for Stage 6 ->
+      Ref to #I6.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - icu_id
+    - age
+    - bmi
+    - weight
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I6
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Diabetes prevalence (~21.63%) varies substantially across hospitals (IQR
+      >= 4.0 pp, chi2 p < 0.001) and across >= 3 of 4 core strata (age_bin, ethnicity,
+      icu_type, elective_surgery; p < 0.001 and range >= 3.0 pp).
+  methodology:
+    technique: Hospital-level Wilson CI/IQR spread and subgroup Pearson chi-square
+      tests
+    parameters:
+      min_hospital_rows: 30
+      alpha: 0.001
+      min_range_pp: 3.0
+    assumptions:
+    - Hospitals with n >= 30 yield stable empirical prevalence estimates.
+    missing_data_policy: Retain nulls as explicit '__MISSING__' category.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: pos_rate=21.63%, hosp_chi2_p=0.000e+00, hosp_iqr=8.82pp (P10=8.96%, P90=29.17%,
+      n_hosp30=188), k_sig_core=3/4
+    formula: IQR(prev_hosp | n>=30); count(core strata with chi2_p<0.001 & range>=3pp)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 TrainingWiDS2021.csv rows
+  verdict:
+    outcome: "TRUE"
+    'true': hosp_chi2_p < 0.001 AND hosp_iqr >= 4.0 AND k_sig_core >= 3
+    'false': (hosp_chi2_p >= 0.05 OR hosp_iqr < 2.0) AND k_sig_core == 0
+    inconclusive: Partial hospital or subgroup heterogeneity
+  action:
+    on_true: 'Require Log-Loss/Brier calibration audit + OOF aggregations; Spawns
+      #I6.1.'
+    on_false: 'Proceed with uniform prior assumption and Spawns #I6.1.'
+    on_inconclusive: 'Inspect heterogeneity table in stage2_target_prevalence.csv;
+      Spawns #I6.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - hospital_id
+    - age
+    - bmi
+    - ethnicity
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I6.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I6 and #I3.1. Missing strata in age/bmi/weight/ethnicity differ
+      by >= 2.0 pp in diabetes prevalence (p < 0.01), and Train-to-Unlabeled composition
+      shifts imply >= 0.50 pp projected target prior shift.'
+  methodology:
+    technique: Missing-vs-present chi-square tests and direct demographic standardization
+    parameters:
+      alpha: 0.01
+      min_prev_diff_pp: 2.0
+      min_prior_shift_pp: 0.5
+    assumptions:
+    - Train conditional prevalence within strata holds to first order in Test.
+    missing_data_policy: Explicit '__MISSING__' stratum included in standardization.
+    script_ref: scripts/stage2_shift_and_target.py
+  evidence:
+    type: N
+    metric: 'k_miss_bias=2, max_shift_pp=0.197pp, std_shifts={''age_bin'': 0.1974,
+      ''bmi_bin'': -0.0837, ''ethnicity'': -0.128, ''icu_type'': 0.0143}, details=[{''col'':
+      ''age'', ''n_na'': 4988, ''prev_na_pct'': 13.232, ''prev_present_pct'': 21.963,
+      ''abs_diff_pp'': 8.731, ''chi2_p'': 9.944485736044577e-49}, {''col'': ''bmi'',
+      ''n_na'': 4490, ''prev_na_pct'': 20.379, ''prev_present_pct'': 21.673, ''abs_diff_pp'':
+      1.295, ''chi2_p'': 0.04018949937956313}, {''col'': ''weight'', ''n_na'': 3463,
+      ''prev_na_pct'': 20.993, ''prev_present_pct'': 21.646, ''abs_diff_pp'': 0.652,
+      ''chi2_p'': 0.3685308476988922}, {''col'': ''ethnicity'', ''n_na'': 1587, ''prev_na_pct'':
+      13.989, ''prev_present_pct'': 21.723, ''abs_diff_pp'': 7.734, ''chi2_p'': 1.2906865882301525e-13}]'
+    formula: sum_s P_test(s)*P_train(y=1|s) - P_train(y=1)
+  condition:
+    timeframe: Static WiDS Datathon 2021 combined cohort
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': k_miss_bias >= 1 AND max_shift_pp >= 0.50
+    'false': k_miss_bias == 0 AND max_shift_pp < 0.20
+    inconclusive: Mixed missing-stratum bias and composition prior shift
+  action:
+    on_true: Escalate age/bmi/weight missingness bias to Stage 4 MNAR -> Proceeds
+      Stage 3.
+    on_false: Confirm minimal prior distortion -> Proceeds Stage 3.
+    on_inconclusive: Log exact missing-stratum bias for Stage 4 MNAR audit -> Proceeds
+      Stage 3.
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 174dd17
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - age
+    - bmi
+    - weight
+    - ethnicity
+    - icu_type
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage2_shift_and_target.py
+      timestamp: "2026-11-19T06:40:30+08:00"
+- id: I7
+  status: "TRUE"
+  hypothesis:
+    polarity: '-'
+    claim: Rivals P1 ('All variables are non-linear distribution'). Fewer than 100%
+      of continuous predictors (nunique>=10) violate normality, with >=10% near-Gaussian.
+  methodology:
+    technique: Skewness, excess kurtosis, and 5000-row seeded Shapiro-Wilk W audit
+    parameters:
+      shapiro_sample_n: 5000
+      seed: 42
+    assumptions:
+    - Substantive non-normality requires |skew|>1, |kurt|>2, or W<0.95.
+    missing_data_policy: Non-null values per column.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: n_cont=153, n_non_normal=82 (53.59%), near_gaussian=['age', 'd1_hemaglobin_max',
+      'd1_hemaglobin_min', 'd1_hematocrit_max', 'd1_sysbp_noninvasive_max', 'd1_sysbp_max',
+      'd1_hematocrit_min', 'd1_potassium_min', 'hematocrit_apache', 'd1_hco3_min',
+      'd1_calcium_max', 'h1_diasbp_min', 'h1_diasbp_noninvasive_min', 'heart_rate_apache',
+      'h1_diasbp_max', 'd1_diasbp_min', 'd1_sodium_max', 'd1_calcium_min', 'h1_diasbp_noninvasive_max',
+      'd1_diasbp_noninvasive_min', 'd1_hco3_max', 'h1_sysbp_noninvasive_max', 'h1_potassium_max',
+      'h1_potassium_min', 'd1_diasbp_invasive_min', 'h1_sysbp_max', 'd1_diasbp_max',
+      'h1_sysbp_noninvasive_min', 'd1_diasbp_noninvasive_max', 'd1_heartrate_min',
+      'd1_albumin_min', 'h1_calcium_min', 'h1_calcium_max', 'd1_albumin_max', 'h1_diasbp_invasive_min',
+      'albumin_apache', 'h1_sysbp_min', 'h1_diasbp_invasive_max', 'h1_hemaglobin_min',
+      'h1_hemaglobin_max', 'd1_sysbp_min', 'd1_sysbp_noninvasive_min', 'h1_hematocrit_min',
+      'd1_platelets_min', 'h1_hematocrit_max', 'd1_heartrate_max', 'h1_mbp_min', 'h1_mbp_invasive_min',
+      'h1_hco3_min', 'h1_hco3_max', 'h1_mbp_max', 'd1_pao2fio2ratio_max', 'h1_mbp_noninvasive_min',
+      'd1_pao2fio2ratio_min', 'h1_mbp_noninvasive_max', 'd1_mbp_max', 'h1_heartrate_min',
+      'd1_mbp_noninvasive_max', 'd1_arterial_ph_max', 'd1_mbp_min', 'h1_pao2fio2ratio_min',
+      'height', 'h1_pao2fio2ratio_max', 'ph_apache', 'd1_mbp_noninvasive_min', 'h1_albumin_min',
+      'h1_heartrate_max', 'h1_albumin_max', 'h1_sysbp_invasive_max', 'h1_sysbp_invasive_min',
+      'd1_sysbp_invasive_min']
+    formula: count(|skew|>1 OR |kurt|>2 OR W<0.95) / n_cont
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - Numeric predictors in F_clinical with nunique_train >= 10
+  verdict:
+    outcome: "TRUE"
+    'true': frac_non_normal <= 0.90
+    'false': frac_non_normal == 1.0
+    inconclusive: 0.90 < frac_non_normal < 1.0
+  action:
+    on_true: 'Refute blanket P1; tag near_gaussian cols in triage table; Spawns #I7.1.'
+    on_false: 'Confirm P1 across 100% of continuous vars; mandate non-linear; Spawns
+      #I7.1.'
+    on_inconclusive: 'Document near-universal non-normality and small Gaussian list;
+      Spawns #I7.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Continuous numeric predictors in F_clinical
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I7.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I7. Non-linear grouped HGB AUC and MI surface predictive signals
+      missed by Pearson |r| (Top-20 Jaccard < 0.80 and >= 5 numeric features with
+      lift).'
+  methodology:
+    technique: 175-feature Pearson |r|, Spearman |rho|, MI, DecisionTree, and HGB
+      AUC
+    parameters:
+      cv: StratifiedGroupKFold(5)
+      tree_depth: 4
+      mi_neighbors: 5
+    assumptions:
+    - Comparing depth-4 tree vs rank AUC on non-null rows isolates U-shapes.
+    missing_data_policy: Linear/MI/Tree on non-null rows; HGB natively over all 130,157
+      rows.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: top20_jaccard=0.7391, k_nonlinear_lift=15
+    formula: Jaccard(Top20(|r|), Top20(MI)); count(tree_lift>=0.015 OR rank_lift>=0.03)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 175 F_clinical predictors
+  verdict:
+    outcome: "TRUE"
+    'true': top20_jaccard < 0.80 AND k_nonlinear_lift >= 5
+    'false': top20_jaccard >= 0.90 AND k_nonlinear_lift == 0
+    inconclusive: Partial rank divergence or non-monotonic lift
+  action:
+    on_true: 'Adopt auc_hgb_full_grouped + MI as canonical triage ranking -> Ref to
+      #I8.'
+    on_false: 'Document linear sufficiency while retaining grouped HGB -> Ref to #I8.'
+    on_inconclusive: 'Retain dual linear + non-linear triage rankings -> Ref to #I8.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I8
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Within Top-25 predictors by grouped HGB AUC, |Spearman rho| >= 0.80 collapses
+      the 25 features into <= 14 clusters with c_top1 having >= 1 Top-25 twin.
+  methodology:
+    technique: Top-25 pairwise Spearman matrix and connected-component clustering
+    parameters:
+      top_k: 25
+      rho_threshold: 0.8
+      min_overlap_n: 1000
+    assumptions:
+    - Cross-window twins of one analyte cluster with |rho| >= 0.80.
+    missing_data_policy: Pairwise complete non-null observations.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: c_top1=d1_glucose_max (auc=0.7839, r=0.40074, rho=0.40843), n_clusters=13,
+      top1_twins=['glucose_apache']
+    formula: Connected components of G(Top25, |Spearman rho| >= 0.80)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - Top-25 predictors in F_clinical ranked by auc_hgb_full_grouped
+  verdict:
+    outcome: "TRUE"
+    'true': n_clusters <= 14 AND top1_twin_count >= 1
+    'false': n_clusters >= 20 AND top1_twin_count == 0
+    inconclusive: Moderate cluster count (15-19) or singleton c_top1
+  action:
+    on_true: 'Tag redundant Top-25 twins for Stage 5; Spawns #I8.1; Ref to #I9.'
+    on_false: 'Retain Top-25 without proxy merging; Spawns #I8.1; Ref to #I9.'
+    on_inconclusive: 'Review moderate clustering in stage3_top25_collinearity_clusters.csv;
+      Spawns #I8.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_glucose_max
+    - glucose_apache
+    - d1_glucose_min
+    - h1_glucose_max
+    - h1_glucose_min
+    - apache_3j_diagnosis
+    - apache_2_diagnosis
+    - bmi
+    - d1_bun_max
+    - d1_creatinine_max
+    - bun_apache
+    - weight
+    - d1_bun_min
+    - d1_creatinine_min
+    - creatinine_apache
+    - age
+    - d1_potassium_max
+    - d1_sodium_min
+    - d1_hemaglobin_max
+    - d1_hemaglobin_min
+    - d1_hematocrit_max
+    - d1_sysbp_noninvasive_max
+    - sodium_apache
+    - d1_sysbp_max
+    - d1_hematocrit_min
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I8.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I8 and rivals pre-assumptive low-R discard claim. Adding features
+      ranked 26..175 increases 5-fold grouped HGB AUC by >= +0.015 (>= 4/5 folds).'
+  methodology:
+    technique: Nested multivariate subset scaling across Top-1..All-175 on locked
+      SGKF splits
+    parameters:
+      subsets:
+      - Top-1
+      - Top-10
+      - Top-25
+      - Top-25-dedup
+      - Top-50
+      - All-175
+    assumptions:
+    - Identical CV folds isolate incremental predictive signal beyond Top-25.
+    missing_data_policy: Native NaN handling inside HistGradientBoostingClassifier.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: 'auc_top25=0.84083, auc_all175=0.84963, delta=+0.00880, folds_improved=5/5,
+      curve=[{''subset'': ''Top-1'', ''n_features'': 1, ''oof_auc'': 0.78358, ''fold_mean_auc'':
+      0.78428, ''fold_std_auc'': 0.00341}, {''subset'': ''Top-10'', ''n_features'':
+      10, ''oof_auc'': 0.82745, ''fold_mean_auc'': 0.82807, ''fold_std_auc'': 0.00246},
+      {''subset'': ''Top-25'', ''n_features'': 25, ''oof_auc'': 0.84083, ''fold_mean_auc'':
+      0.8413, ''fold_std_auc'': 0.0026}, {''subset'': ''Top-25-dedup'', ''n_features'':
+      13, ''oof_auc'': 0.83767, ''fold_mean_auc'': 0.83811, ''fold_std_auc'': 0.00287},
+      {''subset'': ''Top-50'', ''n_features'': 50, ''oof_auc'': 0.84575, ''fold_mean_auc'':
+      0.84633, ''fold_std_auc'': 0.00238}, {''subset'': ''All-175'', ''n_features'':
+      175, ''oof_auc'': 0.84963, ''fold_mean_auc'': 0.85002, ''fold_std_auc'': 0.00232},
+      {''subset'': ''No-Glucose-Diag'', ''n_features'': 168, ''oof_auc'': 0.74388,
+      ''fold_mean_auc'': 0.74386, ''fold_std_auc'': 0.00603}]'
+    formula: OOF_AUC(All-175) - OOF_AUC(Top-25)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': delta >= 0.015 AND folds_improved >= 4
+    'false': delta < 0.005
+    inconclusive: 0.005 <= delta < 0.015 or < 4 folds improved
+  action:
+    on_true: 'Reject pre-assumptive low-R feature discard; mandate All-175 retention
+      -> Ref to #I9.'
+    on_false: 'Confirm Top-25 saturation -> Ref to #I9.'
+    on_inconclusive: 'Keep Top-50 vs All-175 benchmark in Stage 6 -> Ref to #I9.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I9
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Zero Top-40 features cross deterministic single-feature leakage (AUC >=
+      0.90), while >= 3 F_clinical columns contain hard physiological/unit impossible
+      values.
+  methodology:
+    technique: 175-feature triage table compilation, single-feature AUC screen, and
+      range scan
+    parameters:
+      top_leak_n: 40
+      leak_auc_min: 0.9
+    assumptions:
+    - DataDictionary units define valid physiological intervals.
+    missing_data_policy: Evaluate bounds strictly on non-null Train and Unlabeled
+      values.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: k_hard_leak_top40=0, k_impossible_cols=10
+    formula: count(Top40 AUC>=0.90); count(impossible_train_n >= 1)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows across 175 predictors
+  verdict:
+    outcome: "TRUE"
+    'true': k_hard_leak_top40 == 0 AND k_impossible_cols >= 3
+    'false': k_hard_leak_top40 >= 1 OR k_impossible_cols == 0
+    inconclusive: k_hard_leak_top40 == 0 AND 1 <= k_impossible_cols <= 2
+  action:
+    on_true: 'Publish feature_triage_table.csv and escalate impossible cols to Stage
+      4; Spawns #I9.1.'
+    on_false: 'Quarantine leaky cols or continue Stage 4 consistency checks; Spawns
+      #I9.1.'
+    on_inconclusive: 'Audit the 1-2 flagged cols in Stage 4; Spawns #I9.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2);
+      data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I9.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I9. At least 1 APACHE diagnosis code (n>=30) has >= 85% diabetes
+      prevalence, and dropping glucose + diagnosis lowers grouped AUC by >= 0.04 while
+      retaining non-glucose AUC >= 0.72.'
+  methodology:
+    technique: High-prevalence diagnosis code screen and grouped HGB ablation
+    parameters:
+      min_code_n: 30
+      prev_min_pct: 85.0
+    assumptions:
+    - AUC >= 0.72 without glucose/diagnosis confirms broad systemic signal.
+    missing_data_policy: Missing diagnosis codes mapped to '__MISSING__'.
+    script_ref: scripts/stage3_signal_and_triage.py
+  evidence:
+    type: N
+    metric: k_diag_ge85=0 (pos_share=0.00%), auc_all175=0.84963, auc_no_gluc_diag=0.74388,
+      delta=0.10575, codes=[]
+    formula: OOF_AUC(All-175) - OOF_AUC(All-175 \ (glucose U diagnosis))
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': k_diag_ge85 >= 1 AND delta >= 0.04 AND auc_no_gluc_diag >= 0.72
+    'false': k_diag_ge85 == 0 AND delta < 0.02
+    inconclusive: Partial diagnosis code tail or glucose reliance
+  action:
+    on_true: Document valid admission DKA codes and strong non-glucose signal -> Proceeds
+      Stage 4.
+    on_false: Document low diagnosis/glucose dependency -> Proceeds Stage 4.
+    on_inconclusive: Inspect diagnosis codes and non-glucose baseline in Stage 5 ->
+      Proceeds Stage 4.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 4c0ca25
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    - d1_glucose_max
+    - d1_glucose_min
+    - diabetes_mellitus
+    - glucose_apache
+    - h1_glucose_max
+    - h1_glucose_min
+    - hospital_id
+    extraction:
+      script: scripts/stage3_signal_and_triage.py
+      timestamp: "2026-11-19T06:53:14+08:00"
+- id: I10
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Across deduplicated non-trivial missingness masks in F_clinical, missingness
+      is MNAR/MAR wrt diabetes_mellitus (>= 10 masks with BH-FDR q < 0.01 & |Δ| >=
+      2.0 pp).
+  methodology:
+    technique: Deduplicated missingness-mask chi2 + BH-FDR and burden Spearman test
+    parameters:
+      fdr_alpha: 0.01
+      min_abs_diff_pp: 2.0
+    assumptions:
+    - Twin columns sharing masks reflect one underlying lab-order event.
+    missing_data_policy: Missingness evaluated directly via isna() indicator.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: 'n_unique_masks=89, k_mnar=37, r_tot_miss=-0.0426 (p=1.943e-53), top=[{''rep_column'':
+      ''glucose_apache'', ''abs_diff_pp'': 16.3886, ''bh_fdr_q'': 0.0}, {''rep_column'':
+      ''d1_glucose_max'', ''abs_diff_pp'': 16.1876, ''bh_fdr_q'': 7.257029131191072e-260},
+      {''rep_column'': ''apache_3j_diagnosis'', ''abs_diff_pp'': 15.3723, ''bh_fdr_q'':
+      4.944941914259304e-27}]'
+    formula: count(BH_q < 0.01 AND |P(y=1|miss)-P(y=1|present)| >= 2.0 pp)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows and 175 predictors with 30 <= n_null <= N-30
+  verdict:
+    outcome: "TRUE"
+    'true': k_mnar >= 10 OR (k_mnar >= 3 AND p_tot < 0.001 AND |r_tot| >= 0.02)
+    'false': k_mnar == 0 AND (p_tot >= 0.05 OR |r_tot| < 0.01)
+    inconclusive: 1-9 significant missingness masks
+  action:
+    on_true: 'Confirm MNAR/MAR; export stage4_missingness_mechanisms.csv; Spawns #I10.1.'
+    on_false: 'Reject widespread MNAR; Spawns #I10.1.'
+    on_inconclusive: 'Inspect 1-9 significant masks; Spawns #I10.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical (175 predictors)
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I10.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I10. Explicit missingness flags/panel counts lift grouped HGB
+      AUC by >= +0.005 over imputed without flags (or >= +0.002 over native NaN).'
+  methodology:
+    technique: 4-arm missingness-representation ablation on 5-fold SGKF
+    parameters:
+      n_splits: 5
+      n_flags_added: 86
+    assumptions:
+    - Comparing imputed+flags vs imputed isolates pure missingness signal.
+    missing_data_policy: Imputers fit per fold; non-demographic counts omit shifted
+      demos.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: native_raw=0.84963, native_counts=0.84967 (Δ=+0.00004), imp_no_flags=0.84739,
+      imp_flags=0.84881 (Δ=+0.00142)
+    formula: auc_imp_flags - auc_imp_no_flags; auc_native_counts - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': delta_imp >= 0.005 OR delta_nat >= 0.002
+    'false': delta_imp <= 0.0 AND delta_nat <= 0.0
+    inconclusive: Modest positive lift below thresholds
+  action:
+    on_true: 'Retain non-demographic missingness counts/flags for Stage 5-6 -> Ref
+      to #I11.'
+    on_false: 'Rely on native tree NaN handling without extra flags -> Ref to #I11.'
+    on_inconclusive: 'Test missingness counts on Stage 6 Log-Loss/Brier -> Ref to
+      #I11.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I11
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Across 64 min/max pairs, 64 (h1_, d1_) bounds, and BMI formula checks in
+      Train and Test, >= 100 total structural violations or >= 1 min>max / h1>d1 violation
+      occur.
+  methodology:
+    technique: Algebraic invariant audit across min/max, h1/d1, apache/d1, and BMI
+    parameters:
+      tolerance_eps: 1.0e-06
+      bmi_rel_err_threshold: 0.02
+    assumptions:
+    - 1-hour extrema must lie within 24-hour extrema for same stay.
+    missing_data_policy: Evaluate strictly where both compared columns are non-null.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: min_gt_max=1683, h1_out_d1=80081, ap_out_d1=250511, bmi_mismatch=2274,
+      bmi_recoverable=(tr:0, te:0)
+    formula: min_gt_max + h1_out_d1 + bmi_mismatch
+  condition:
+    timeframe: Static WiDS Datathon 2021 Train and Unlabeled snapshots
+    filters:
+    - All 130,157 Train and 10,234 Unlabeled rows
+  verdict:
+    outcome: "TRUE"
+    'true': total_violations >= 100 OR min_gt_max >= 1 OR h1_out_d1 >= 1
+    'false': total_violations == 0
+    inconclusive: 1-99 BMI mismatches with zero min/max or h1/d1 inversions
+  action:
+    on_true: 'Define cleaning/BMI recovery rules in Stage 5-6; Spawns #I11.1; Ref
+      to #I12.'
+    on_false: 'Certify algebraic bounds; log recoverable BMI; Spawns #I11.1; Ref to
+      #I12.'
+    on_inconclusive: 'Inspect <100 BMI discrepancies; Spawns #I11.1; Ref to #I12.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 min/max pairs
+    - height
+    - weight
+    - bmi
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I11.1
+  status: "FALSE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I11. General BP columns absorb >= 99% of invasive/noninvasive
+      BP readings (unabsorbed <= 0.01%) and dropping sub-columns with has_invasive_bp
+      preserves AUC.'
+  methodology:
+    technique: 12-triplet BP extremum reconciliation and grouped-CV ablation
+    parameters:
+      bp_triplets: 12
+      pruned_sub_cols: 24
+    assumptions:
+    - General BP encompasses either invasive or noninvasive readings.
+    missing_data_policy: Reconcile where either invasive or noninvasive is non-null.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: max_unabs_pct=17.5223%, mean_inv_minus_noninv=+3.166mmHg, auc_pruned=0.84962
+      (Δ=-0.00001)
+    formula: unabsorbed_pct; auc_bp_pruned - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 36 BP columns in Train and Test
+  verdict:
+    outcome: "FALSE"
+    'true': max_unabs <= 0.01 AND |delta_bp| < 0.002
+    'false': max_unabs > 0.05 OR delta_bp <= -0.005
+    inconclusive: Partial absorption or minor AUC drop
+  action:
+    on_true: 'Adopt general BP + has_invasive_bp simplification -> Ref to #I12.'
+    on_false: 'Retain invasive/noninvasive BP sub-columns -> Ref to #I12.'
+    on_inconclusive: 'Keep BP sub-columns + has_invasive_bp for Stage 6 check -> Ref
+      to #I12.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 36 d1_/h1_ blood-pressure columns
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I12
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Numeric predictors exhibit >= 5 dictionary unit-scale mismatches and >=
+      3 extreme tail columns (>= 0.1%), while sanitizing hard sentinels to NaN preserves
+      AUC.
+  methodology:
+    technique: Quantile tail audit (p0.1..p99.9) and pre/post sanitization 5-fold
+      SGKF CV
+    parameters:
+      extreme_rate_threshold_pct: 0.1
+    assumptions:
+    - Extreme survival bounds distinguish physiology from EHR sentinels.
+    missing_data_policy: Coerce hard-impossible/sentinel values to NaN without row
+      drops.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: k_unit=9 (['hematocrit_apache', 'd1_hematocrit_max', 'd1_hematocrit_min',
+      'h1_hematocrit_max', 'h1_hematocrit_min', 'd1_pao2fio2ratio_max', 'd1_pao2fio2ratio_min',
+      'h1_pao2fio2ratio_max', 'h1_pao2fio2ratio_min']), n_extreme=6 (['pre_icu_los_days',
+      'd1_heartrate_min', 'd1_resprate_min', 'd1_spo2_min', 'h1_resprate_min', 'h1_spo2_min']),
+      auc_san=0.84974 (Δ=+0.00011)
+    formula: auc_sanitized - auc_native_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - All 169 numeric F_clinical predictors
+  verdict:
+    outcome: "TRUE"
+    'true': k_unit >= 5 AND n_extreme >= 3 AND delta_san >= -0.001
+    'false': k_unit == 0 AND n_extreme == 0
+    inconclusive: Partial unit mismatch or sanitization AUC delta < -0.001
+  action:
+    on_true: 'Lock range sanitization (keep hematocrit in %); Spawns #I12.1; Ref to
+      #I13.'
+    on_false: 'Document clean scales; Spawns #I12.1; Ref to #I13.'
+    on_inconclusive: 'Hold blind zero->NaN pending hospital-sentinel check #I12.1
+      -> Ref to #I13.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2);
+      data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 169 numeric predictors in F_clinical
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I12.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I12. Zero-coded vital/age anomalies cluster inside specific
+      hospital_id feeds (top-5 hospitals >= 50% of zeros or >= 25% rate in a hospital
+      n >= 30).'
+  methodology:
+    technique: Per-hospital zero-rate concentration and diabetes prevalence audit
+    parameters:
+      top5_share_min: 0.5
+      hosp_rate_min: 0.25
+    assumptions:
+    - Hospital-concentrated 0s indicate EHR missingness-as-zero defaults.
+    missing_data_policy: Evaluated over non-null entries per column.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: 'k_hosp_conc=4, details=[{''col'': ''d1_resprate_min'', ''n_zero'': 5868,
+      ''top5_hosp_share'': 0.1943, ''max_hosp_rate_n30'': 0.3527, ''dm_zero_pct'':
+      24.42, ''dm_nonzero_pct'': 21.51}, {''col'': ''h1_resprate_min'', ''n_zero'':
+      905, ''top5_hosp_share'': 0.2099, ''max_hosp_rate_n30'': 0.2992, ''dm_zero_pct'':
+      25.75, ''dm_nonzero_pct'': 21.62}, {''col'': ''d1_heartrate_min'', ''n_zero'':
+      901, ''top5_hosp_share'': 0.1887, ''max_hosp_rate_n30'': 0.25, ''dm_zero_pct'':
+      19.76, ''dm_nonzero_pct'': 21.66}, {''col'': ''age'', ''n_zero'': 30, ''top5_hosp_share'':
+      0.8, ''max_hosp_rate_n30'': 0.038, ''dm_zero_pct'': 10.0, ''dm_nonzero_pct'':
+      21.97}]'
+    formula: count(top5_hosp_share >= 0.50 OR max_hosp_rate_n30 >= 0.25)
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - d1_resprate_min, h1_resprate_min, d1_heartrate_min, age
+  verdict:
+    outcome: "TRUE"
+    'true': k_hosp_conc >= 1
+    'false': max(top5_share) < 0.25 AND max(hosp_rate) < 0.10
+    inconclusive: Moderate hospital clustering
+  action:
+    on_true: 'Treat concentrated 0-vitals/age==0 as EHR missingness sentinels -> Ref
+      to #I13.'
+    on_false: 'Treat zero vitals as distributed clinical events -> Ref to #I13.'
+    on_inconclusive: 'Verify 0->NaN sensitivity in Stage 6 CV -> Ref to #I13.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_resprate_min
+    - h1_resprate_min
+    - d1_heartrate_min
+    - age
+    - hospital_id
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I13
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Across the 8 realized WiDS 2021 categorical/diagnosis predictors, >= 50
+      rare levels (n < 30) and >= 1 unseen Unlabeled test category level exist.
+  methodology:
+    technique: Cardinality, rare-level, unseen test-level, and string-collision audit
+    parameters:
+      rare_n_threshold: 30
+      n_cols: 8
+    assumptions:
+    - apache_2_bodysystem / apache_3j_bodysystem do not exist in WiDS 2021.
+    missing_data_policy: Map NaN to '__MISSING__' prior to level comparisons.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: tot_rare_lt30=126, tot_unseen_test=2, max_unseen_row_pct=0.0195%
+    formula: sum(|levels < 30|); sum(|levels_test \ levels_train|)
+  condition:
+    timeframe: Static WiDS Datathon 2021 snapshot
+    filters:
+    - 8 realized categorical/diagnosis cols (excluding absent bodysystem cols)
+  verdict:
+    outcome: "TRUE"
+    'true': tot_rare >= 50 AND (tot_unseen >= 1 OR max_unseen_pct > 0)
+    'false': tot_rare == 0 AND tot_unseen == 0
+    inconclusive: Rare levels without unseen test levels (or vice versa)
+  action:
+    on_true: 'Lock unknown-safe encoding + rare pooling; Spawns #I13.1.'
+    on_false: 'Document clean overlap; Spawns #I13.1.'
+    on_inconclusive: 'Review rare-level concentration in stage4_categorical_audit.csv;
+      Spawns #I13.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - ethnicity
+    - gender
+    - hospital_admit_source
+    - icu_admit_source
+    - icu_stay_type
+    - icu_type
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I13.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I13. Decomposing apache_3j_diagnosis into hierarchical nominal
+      parts + OOF smoothed TE lifts diagnosis-only AUC >= +0.010 and full AUC >= +0.001.'
+  methodology:
+    technique: '5-fold SGKF benchmark: raw float vs hierarchical decomposition + OOF
+      TE'
+    parameters:
+      te_smoothing_m: 20.0
+    assumptions:
+    - Integer major code and hundreds organ system encode nominal pathology.
+    missing_data_policy: Missing codes receive fold-train target prior.
+    script_ref: scripts/stage4_integrity_and_missingness.py
+  evidence:
+    type: N
+    metric: diag_raw=0.63872, diag_hier=0.64564 (Δ=+0.00692), full_raw=0.84963, full_hier=0.85165
+      (Δ=+0.00202)
+    formula: auc_diag_hier - auc_diag_raw; auc_full_hier - auc_full_raw
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': delta_diag >= 0.010 AND delta_full >= 0.001
+    'false': delta_diag <= 0.0 AND delta_full <= 0.0
+    inconclusive: Standalone diagnosis gain without full-tree delta >= +0.001
+  action:
+    on_true: Adopt apache_3j hierarchy + OOF TE in Stage 5-6 -> Proceeds Stage 5.
+    on_false: Keep native handling without TE overhead -> Proceeds Stage 5.
+    on_inconclusive: Carry apache_3j hierarchy into Stage 5-6 feature testing -> Proceeds
+      Stage 5.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 33f771a
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - F_clinical
+    - apache_2_diagnosis
+    - apache_3j_diagnosis
+    extraction:
+      script: scripts/stage4_integrity_and_missingness.py
+      timestamp: "2026-11-19T07:04:13+08:00"
+- id: I14
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: Across 16 tri-window analytes, median |Spearman rho(d1_max, apache)| >=
+      0.75, yet dropping h1_ or 15 _apache twins reduces 5-fold SGKF AUC by >= 0.001.
+  methodology:
+    technique: Cross-window Spearman correlations and window-ablation 5-fold SGKF
+      CV
+    parameters:
+      tri_window_analytes: 16
+      apache_twins: 15
+    assumptions:
+    - 80k+ h1_ and 250k+ _apache entries outside d1_ add distinct signal.
+    missing_data_policy: Pairwise complete Spearman; native NaN in HGB.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: med_rho_d1_ap=0.8369, auc_base=0.84957, auc_no_h1=0.84946 (drop=+0.00011),
+      auc_no_ap=0.84901 (drop=+0.00056)
+    formula: auc_sanitized - auc_no_window
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': med_rho >= 0.75 AND (drop_h1 >= 0.001 OR drop_ap >= 0.001)
+    'false': med_rho < 0.60 AND drop_h1 <= 0 AND drop_ap <= 0
+    inconclusive: Partial correlation or smaller drop
+  action:
+    on_true: 'Retain multi-window predictors; Spawns #I14.1; Ref to #I15.'
+    on_false: 'Prune redundant window in #I14.1; Ref to #I15.'
+    on_inconclusive: 'Test granular SULO pruning in #I14.1; Ref to #I15.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - 64 h1_ cols
+    - 64 d1_ cols
+    - 15 _apache twins
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I14.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: '-'
+    claim: 'Subtends #I14 and tests AutoViz SULO pruning. Greedy correlation pruning
+      at |rho| >= 0.80 degrades 5-fold SGKF HGB AUC by >= 0.002.'
+  methodology:
+    technique: Target-AUC-prioritized greedy Spearman pruning at 0.90 and 0.80
+    parameters:
+      thresholds:
+      - 0.9
+      - 0.8
+    assumptions:
+    - Correlated min/max/window twins carry joint tree interaction signal.
+    missing_data_policy: Pairwise Spearman over numeric predictors; native NaN in
+      HGB.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: n_kept_r90=118, auc_r90=0.84948 (Δ=-0.00009); n_kept_r80=92, auc_r80=0.84790
+      (Δ=-0.00167)
+    formula: auc_sulo - auc_sanitized_base
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': delta_r80 <= -0.002
+    'false': delta_r80 >= 0.0 AND delta_r90 >= 0.0
+    inconclusive: Minor delta in (-0.002, 0.0)
+  action:
+    on_true: 'Reject SULO |rho|>=0.80 pruning for tree models -> Ref to #I15.'
+    on_false: 'Adopt SULO pruned subset for Stage 6 -> Ref to #I15.'
+    on_inconclusive: 'Keep full sanitized set for GBDT; benchmark pruned for linear
+      -> Ref #I15.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical (175 predictors)
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I15
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Across Top-25 + clinical watchlist predictors, zero originate post-24h
+      or hit AUC >= 0.90, and all predictors with AUC >= 0.55 generalize cleanly across
+      folds.
+  methodology:
+    technique: Timeline classification, 5-fold univariate stability, and arf coherence
+    parameters:
+      max_fold_std: 0.04
+      min_fold_auc: 0.5
+      leak_auc: 0.9
+    assumptions:
+    - Valid clinical signals generalize without fold-direction flips.
+    missing_data_policy: Native NaN preserved in univariate fold checks.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: n_post_24h=0, n_leak_ge90=0, n_unstable=0, arf1_creat_med=5.80 vs arf0_creat_med=0.94
+    formula: count(mean_auc >= 0.55 AND (min_fold < 0.50 OR std_fold > 0.04))
+  condition:
+    timeframe: Static WiDS Datathon 2021 pre-ICU through 24h ICU
+    filters:
+    - Top-25 F_clinical union 8 watchlist predictors
+  verdict:
+    outcome: "TRUE"
+    'true': n_post_24h == 0 AND n_leak_ge90 == 0 AND n_unstable == 0
+    'false': n_post_24h >= 1 OR n_leak_ge90 >= 1
+    inconclusive: Hospital-unstable proxy features detected
+  action:
+    on_true: 'Certify audited predictors as leak-free; Spawns #I15.1; Ref to #I16.'
+    on_false: 'Quarantine leaky predictors; Spawns #I15.1; Ref to #I16.'
+    on_inconclusive: 'Inspect unstable proxies in stage5_leakage_proxy_audit.csv;
+      Spawns #I15.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/DataDictionaryWiDS2021.csv (sha256=84fc9c3603d4d7a5b9afc4af19d945a292ba124a150b4a3507506f7e3140b860)
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - d1_glucose_max
+    - glucose_apache
+    - d1_glucose_min
+    - h1_glucose_max
+    - h1_glucose_min
+    - apache_3j_diagnosis
+    - apache_2_diagnosis
+    - bmi
+    - d1_bun_max
+    - d1_creatinine_max
+    - bun_apache
+    - weight
+    - d1_bun_min
+    - d1_creatinine_min
+    - creatinine_apache
+    - age
+    - d1_potassium_max
+    - d1_sodium_min
+    - d1_hemaglobin_max
+    - d1_hemaglobin_min
+    - d1_hematocrit_max
+    - d1_sysbp_noninvasive_max
+    - sodium_apache
+    - d1_sysbp_max
+    - d1_hematocrit_min
+    - pre_icu_los_days
+    - elective_surgery
+    - icu_stay_type
+    - arf_apache
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I15.1
+  status: "INCONCLUSIVE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I15. Early ICU-door + 1h predictors achieve SGKF AUC >= 0.78,
+      and adding 28 T3_apache summary covariates on top of 24h vitals/labs adds <
+      0.015.'
+  methodology:
+    technique: 4-horizon temporal-access cumulative grouped CV evaluation
+    parameters:
+      horizons:
+      - T0
+      - T0+T1
+      - T0+T1+T2
+      - All_24h
+    assumptions:
+    - Isolates incremental APACHE coding value over raw first-24h labs/vitals.
+    missing_data_policy: Native NaN preserved across all 4 horizons.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: T0=0.66578, T0_T1=0.75777, T0_T1_T2=0.84453, All_24h=0.84957, delta_apache_t3=+0.00504
+    formula: auc_all_24h - auc_T0_T1_T2
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "INCONCLUSIVE"
+    'true': auc_T0_T1 >= 0.78 AND delta_apache_t3 < 0.015
+    'false': auc_T0_T1 < 0.72 OR delta_apache_t3 >= 0.030
+    inconclusive: Intermediate early AUC or APACHE uplift
+  action:
+    on_true: 'Confirm strong early physiology signal independent of APACHE -> Ref
+      to #I16.'
+    on_false: 'Audit T3_apache drivers -> Ref to #I16.'
+    on_inconclusive: 'Log temporal horizon progression in stage5 summary -> Ref to
+      #I16.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical by temporal tier
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I16
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Cumulative clean domain FE (Families A-D: cleaning, glycemic dynamics,
+      clinical ratios, APACHE3j hierarchy+TE+panel miss) lifts SGKF AUC >= +0.0030
+      (>=4/5 folds) and cuts Log-Loss >= 0.0010.'
+  methodology:
+    technique: Stepwise cumulative FE ablation (Base -> +AB -> +ABC -> +ABCD) on SGKF
+    parameters:
+      te_smoothing_m: 20.0
+      n_new_features: 34
+    assumptions:
+    - Safe division and nested inner OOF TE prevent ratio/encoding leakage.
+    missing_data_policy: Preserve NaN when denominator <= 0 or component is missing.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: san_A=0.84957 (ll=0.37667), AB=0.85114, ABC=0.85143, ABCD=0.85344 (ll=0.37267),
+      Δauc=+0.00387, Δll=-0.00400, folds=5/5, top_eng=[('d1_glucose_range', 0.02551),
+      ('apache_3j_diagnosis_te', 0.00546), ('bmi_calc', 0.00277), ('d1_glucose_mid',
+      0.00112), ('glucose_apache_vs_d1_max', 0.00112)]
+    formula: auc_eng_AD - auc_sanitized; logloss_eng_AD - logloss_sanitized
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "TRUE"
+    'true': delta_auc >= 0.0030 AND folds >= 4 AND delta_ll <= -0.0010
+    'false': delta_auc <= 0.0 OR folds <= 1
+    inconclusive: Positive lift below +0.0030 or partial fold consistency
+  action:
+    on_true: 'Promote Families A-D into Stage 6 production pipeline; Spawns #I16.1.'
+    on_false: 'Prune net-negative engineering families; Spawns #I16.1.'
+    on_inconclusive: 'Retain individually positive FE families for Stage 6; Spawns
+      #I16.1.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Sanitized F_clinical + Families A-D engineered features
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I16.1
+  status: "FALSE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I16. Fold-safe clinical-stratum z-scores (age_bin x icu_type)
+      or unsupervised within-hospital covariate centering lifts eng_AD SGKF AUC >=
+      +0.0015.'
+  methodology:
+    technique: 2-arm contextual aggregation ablation on top of eng_AD
+    parameters:
+      stratum: age_bin x icu_type
+      min_hospital_n: 5
+    assumptions:
+    - Target-free covariate centering generalizes across unseen hospitals.
+    missing_data_policy: NaN when hospital n < 5 or component missing.
+    script_ref: scripts/stage5_collinearity_and_fe.py
+  evidence:
+    type: N
+    metric: eng_AD=0.85344, stratum_z=0.85321 (Δ=-0.00023), hosp_cov_rel=0.85266 (Δ=-0.00077),
+      both=0.85248
+    formula: max(auc_stratum_z, auc_hosp_cov_rel) - auc_eng_AD
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "FALSE"
+    'true': max(delta_stratum, delta_hrel) >= 0.0015
+    'false': delta_stratum <= 0.0 AND delta_hrel <= 0.0
+    inconclusive: Modest positive lift in (0, 0.0015)
+  action:
+    on_true: Include winning contextual arm in Stage 6 baseline pipeline -> Stage
+      6.
+    on_false: Reject contextual group aggregations -> Proceed Stage 6 with eng_AD.
+    on_inconclusive: Test positive contextual arm as Stage 6 ablation -> Proceed Stage
+      6.
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: bad8295
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - eng_AD matrix
+    - hospital_id
+    - age
+    - icu_type
+    extraction:
+      script: scripts/stage5_collinearity_and_fe.py
+      timestamp: "2026-11-19T07:17:22+08:00"
+- id: I17
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Random 5-fold StratifiedKFold artificially inflates fe_ABCD ROC-AUC vs.
+      StratifiedGroupKFold(groups=hospital_id) by >= +0.0040 with facility IDs and
+      >= +0.0015 even after dropping IDs.
+  methodology:
+    technique: 3-arm CV-regime comparison on identical fe_ABCD HGB configuration
+    parameters:
+      n_splits: 5
+      max_iter: 200
+    assumptions:
+    - Train/Test disjointness makes hospital-spanning folds optimistic.
+    missing_data_policy: Native NaN preserved; fold-safe OOF TE per fold.
+    script_ref: scripts/stage6_baseline_and_verify.py
+  evidence:
+    type: N
+    metric: skf_ids=0.87144, skf_noids=0.86127, sgkf_noids=0.85520, delta_naive=+0.01624,
+      delta_split=+0.00607
+    formula: auc_skf_ids - auc_sgkf; auc_skf_noids - auc_sgkf
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows of TrainingWiDS2021.csv
+  verdict:
+    outcome: "TRUE"
+    'true': delta_naive >= 0.0040 AND delta_split >= 0.0015
+    'false': delta_naive <= 0.0 AND delta_split <= 0.0
+    inconclusive: Partial random-CV optimism
+  action:
+    on_true: 'Lock StratifiedGroupKFold(groups=hospital_id); Spawns #I17.1; Ref to
+      #I18.'
+    on_false: 'Document zero inflation while keeping SGKF; Spawns #I17.1; Ref to #I18.'
+    on_inconclusive: 'Log partial ID/split optimism in comparison CSV; Spawns #I17.1;
+      Ref to #I18.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 3d36a20
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - fe_ABCD (209 cols)
+    - hospital_id
+    - icu_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage6_baseline_and_verify.py
+      timestamp: "2026-11-19T07:44:30+08:00"
+- id: I17.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I17 and #I7.1. Under 5-fold SGKF, non-linear fe_ABCD HGB outperforms
+      preprocessed LogisticRegression by >= +0.0250 AUC while LogReg hits >= 0.7800.'
+  methodology:
+    technique: 'SGKF model-family benchmark: HGB vs regularized LogisticRegression
+      + blend'
+    parameters:
+      logreg_C: 0.1
+      prune_rho: 0.9
+      blend: 0.85*HGB + 0.15*LR
+    assumptions:
+    - Non-monotonic features and ratios favor tree splits over linear log-odds.
+    missing_data_policy: Median+indicator+scaler inside fold for LogReg; native NaN
+      HGB.
+    script_ref: scripts/stage6_baseline_and_verify.py
+  evidence:
+    type: N
+    metric: hgb=0.85520, logreg=0.82983 (ll=0.40472), delta=+0.02537, blend_auc=0.85561
+      (ll=0.37107)
+    formula: auc_model_B_hgb - auc_logreg_fe
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "TRUE"
+    'true': delta_hgb_lr >= 0.0250 AND auc_logreg >= 0.7800
+    'false': delta_hgb_lr <= 0.0050
+    inconclusive: Intermediate tree-vs-linear gap
+  action:
+    on_true: 'Confirm GBDT superiority and record linear/blend benchmark -> Ref to
+      #I18.'
+    on_false: 'Elevate LogReg/blend as co-primary baseline -> Ref to #I18.'
+    on_inconclusive: 'Document linear-vs-tree gap and blend lift -> Ref to #I18.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 3d36a20
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - fe_ABCD (209 cols)
+    - hospital_id
+    - diabetes_mellitus
+    extraction:
+      script: scripts/stage6_baseline_and_verify.py
+      timestamp: "2026-11-19T07:44:30+08:00"
+- id: I18
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: Under 5-fold SGKF, cleaned+engineered Model B outperforms Raw Model A across
+      ROC-AUC (>=+0.0030), PR-AUC (>=+0.0040), Log-Loss (>=-0.0030), Brier (>=-0.0005),
+      ECE_10 <= 0.0150, and dedup |ΔAUC| < 0.0010.
+  methodology:
+    technique: Multi-metric baseline comparison and dedup sensitivity under 5-fold
+      SGKF
+    parameters:
+      ece_bins: 10
+      dedup_rows_dropped: 8
+    assumptions:
+    - All 9 identical hospital_id=167 rows stay inside one SGKF fold.
+    missing_data_policy: Native NaN preserved across Model A, Model B, and Model B-dedup.
+    script_ref: scripts/stage6_baseline_and_verify.py
+  evidence:
+    type: N
+    metric: A(auc=0.85139, pr=0.60380, ll=0.37458, brier=0.11918, ece=0.00593) ->
+      B(auc=0.85520, pr=0.61053, ll=0.37072, brier=0.11803, ece=0.00650); dedup_auc=0.85521
+      (|Δ|=0.00001)
+    formula: Model B minus Model A across AUC, PR-AUC, LogLoss, Brier
+  condition:
+    timeframe: Static WiDS Datathon 2021 training cohort
+    filters:
+    - All 130,157 rows grouped by hospital_id
+  verdict:
+    outcome: "TRUE"
+    'true': All 6 discrimination, calibration, and dedup thresholds met
+    'false': Any primary metric fails to improve over Model A
+    inconclusive: Mixed calibration or dedup sensitivity
+  action:
+    on_true: 'Promote Model B as verified benchmark; Spawns #I18.1; Ref to #I18.2.'
+    on_false: 'Roll back failing Stage 4-5 transforms; Spawns #I18.1; Ref to #I18.2.'
+    on_inconclusive: 'Document metric nuances in stage6 report; Spawns #I18.1; Ref
+      to #I18.2.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv
+    version:
+      commit: 3d36a20
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - Raw 175 cols vs fe_ABCD (209 cols)
+    extraction:
+      script: scripts/stage6_baseline_and_verify.py
+      timestamp: "2026-11-19T07:44:30+08:00"
+- id: I18.1
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: 'Subtends #I18 and #I6. Model B achieves median per-hospital AUC >= 0.8200
+      (>=85% of evaluable hospitals >= 0.7500) while Train OOF vs Unlabeled predictions
+      align with KS < 0.05.'
+  methodology:
+    technique: Per-hospital OOF AUC audit, subgroup calibration, Platt/Isotonic, and
+      KS
+    parameters:
+      min_hosp_n: 30
+      min_pos: 5
+      min_neg: 5
+    assumptions:
+    - Aligned Train/Unlabeled prediction distributions confirm low shift distortion.
+    missing_data_policy: Identical sanitization + fe_ABCD applied to Train and Unlabeled.
+    script_ref: scripts/stage6_baseline_and_verify.py
+  evidence:
+    type: N
+    metric: n_hospitals=181, med_auc=0.86789 (iqr=0.05473), frac_ge75=95.03%, ks_train_vs_test=0.01638,
+      train_mean_p=0.21669, test_mean_p=0.20900, platt_ll=0.37091, iso_ll=0.37123
+    formula: median(hosp_auc); KS(Train_OOF_p, Unlabeled_5fold_p)
+  condition:
+    timeframe: Static WiDS Datathon 2021 Train and Unlabeled snapshots
+    filters:
+    - 130,157 Train OOF and 10,234 Unlabeled 5-fold ensemble predictions
+  verdict:
+    outcome: "TRUE"
+    'true': med_auc >= 0.8200 AND frac_ge75 >= 0.85 AND ks < 0.05
+    'false': med_auc < 0.7800 OR frac_ge75 < 0.65 OR ks >= 0.10
+    inconclusive: Moderate hospital spread or KS in [0.05, 0.10)
+  action:
+    on_true: 'Certify cross-hospital robustness & alignment -> Ref to #I18.2.'
+    on_false: 'Audit low-AUC hospital outliers before submission -> Ref to #I18.2.'
+    on_inconclusive: 'Document moderate hospital spread in stage6 summary -> Ref to
+      #I18.2.'
+  source:
+    file: data/raw/TrainingWiDS2021.csv; data/raw/UnlabeledWiDS2021.csv (sha256=5d177271cde1553012ea108094e1a5eb06a1ce8317fefe3a2c68c8076956bef2)
+    version:
+      commit: 3d36a20
+      sha256: ca65bf5c36cafa9788f06d09e7fb66831dc88cde725e1fdc3a80e707e2cf893b
+    columns:
+    - fe_ABCD Train & Unlabeled
+    - hospital_id
+    - age
+    - bmi
+    - ethnicity
+    - icu_type
+    extraction:
+      script: scripts/stage6_baseline_and_verify.py
+      timestamp: "2026-11-19T07:44:30+08:00"
+- id: I18.2
+  status: "TRUE"
+  hypothesis:
+    polarity: +
+    claim: All Stage 1-6 Inquiry Units in inquiries.yaml pass all 5 INQUIRY.md schema
+      and REGEXP checks with zero OPEN inquiries, placeholders, or invalid hashes.
+  methodology:
+    technique: Automated INQUIRY.md REGEXP check across reports/findings/inquiries.yaml
+    parameters:
+      regex_rules: 5
+    assumptions:
+    - Every inquiry unit records commit, sha256, timestamp, and final outcome.
+    missing_data_policy: Missing required fields count directly as schema violations.
+    script_ref: scripts/stage6_baseline_and_verify.py
+  evidence:
+    type: L
+    metric: '{''total_inquiries'': 38, ''open_count'': 0, ''placeholder_count'': 0,
+      ''invalid_outcome_count'': 0, ''invalid_status_count'': 0, ''invalid_sha256_count'':
+      0, ''invalid_commit_count'': 0, ''invalid_timestamp_count'': 0, ''ref_matches'':
+      152, ''edge_matches'': 144}'
+    formula: count(placeholders + bad_sha + bad_commit + bad_ts + open) == 0
+  condition:
+    timeframe: Post-Stage-6 registry freeze
+    filters:
+    - All inquiry units in reports/findings/inquiries.yaml
+  verdict:
+    outcome: "TRUE"
+    'true': All 5 regex checks pass with 0 OPEN and 0 placeholders
+    'false': Any regex violation or unfilled placeholder found
+    inconclusive: Valid syntax with >= 1 OPEN inquiry
+  action:
+    on_true: 'Resolves #PRB: Close WiDS 2021 HMECVAS audit and finalize todo/jo-todo.md.'
+    on_false: Repair failing provenance/placeholders and re-run linter.
+    on_inconclusive: Resolve remaining OPEN inquiries and re-run linter.
+  source:
+    file: reports/findings/inquiries.yaml
+    version:
+      commit: 3d36a20
+      sha256: 21855eecaf1c89564084a75bf81653c65645a8b99a110192f6fba4b012385af6
+    columns:
+    - id
+    - status
+    - hypothesis
+    - methodology
+    - evidence
+    - condition
+    - verdict
+    - action
+    - source
+    extraction:
+      script: scripts/stage6_baseline_and_verify.py
+      timestamp: "2026-11-19T08:18:58+08:00"

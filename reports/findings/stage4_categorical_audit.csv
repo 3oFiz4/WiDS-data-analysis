@@ -1,0 +1,9 @@
+column,train_nunique,test_nunique,rare_levels_lt30,unseen_test_levels,unseen_test_row_pct,case_ws_collisions,top_level,top_level_pct
+ethnicity,7,7,0,0,0.0,0,Caucasian,77.01
+gender,3,3,0,0,0.0,0,M,54.18
+hospital_admit_source,16,11,2,0,0.0,0,Emergency Department,39.38
+icu_admit_source,6,6,0,0,0.0,0,Accident & Emergency,59.04
+icu_stay_type,3,3,0,0,0.0,0,admit,95.84
+icu_type,8,8,0,0,0.0,0,Med-Surg ICU,54.91
+apache_2_diagnosis,45,45,0,0,0.0,0,113.0,12.6
+apache_3j_diagnosis,401,344,124,2,0.0195,0,501.05,4.75

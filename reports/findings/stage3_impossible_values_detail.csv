@@ -1,0 +1,11 @@
+column,rule,train_impossible_n,train_impossible_pct,train_min,train_max,test_impossible_n,test_impossible_pct
+d1_hematocrit_max,val <= 0 OR val > 1.0,114569,100.0,20.4,51.5,9005,100.0
+d1_hematocrit_min,val <= 0 OR val > 1.0,114569,100.0,16.1,50.0,9005,100.0
+hematocrit_apache,val <= 0 OR val > 1.0,103399,100.0,16.2,51.4,8120,100.0
+h1_hematocrit_max,val <= 0 OR val > 1.0,27201,100.0,16.0,51.7,2195,100.0
+h1_hematocrit_min,val <= 0 OR val > 1.0,27201,100.0,15.5,51.5,2195,100.0
+d1_resprate_min,val <= 0,5868,4.5322,0.0,100.0,516,5.0693
+h1_resprate_min,val <= 0,905,0.7316,0.0,189.0,87,0.9148
+d1_heartrate_min,val <= 0,901,0.6936,0.0,175.0,70,0.6856
+pre_icu_los_days,val < 0,471,0.3619,-0.25,175.6277778,40,0.3909
+age,val <= 0 OR val > 110,30,0.024,0.0,89.0,0,0.0

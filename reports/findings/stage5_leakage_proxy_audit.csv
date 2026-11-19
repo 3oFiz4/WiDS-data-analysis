@@ -1,0 +1,30 @@
+column,dd_category,timeline_tier,mean_fold_auc,min_fold_auc,max_fold_auc,std_fold_auc,unstable_flag
+d1_glucose_max,labs,T2_first_24h,0.7849,0.78154,0.79054,0.00353,False
+glucose_apache,APACHE covariate,T3_apache_24h,0.76212,0.7524,0.77486,0.00752,False
+d1_glucose_min,labs,T2_first_24h,0.64481,0.63603,0.65547,0.00632,False
+h1_glucose_max,labs,T1_first_1h,0.64163,0.63242,0.6548,0.00954,False
+h1_glucose_min,labs,T1_first_1h,0.6403,0.63131,0.65146,0.00897,False
+apache_3j_diagnosis,APACHE covariate,T3_apache_24h,0.63094,0.62176,0.63938,0.0068,False
+apache_2_diagnosis,APACHE covariate,T3_apache_24h,0.6256,0.61297,0.63735,0.00931,False
+bmi,demographic,T0_pre_icu,0.61949,0.61009,0.63318,0.00972,False
+d1_bun_max,labs,T2_first_24h,0.61798,0.60726,0.6324,0.00884,False
+d1_creatinine_max,labs,T2_first_24h,0.61266,0.60517,0.62054,0.00555,False
+bun_apache,APACHE covariate,T3_apache_24h,0.60818,0.59273,0.62176,0.00971,False
+weight,demographic,T0_pre_icu,0.6059,0.59548,0.61832,0.00935,False
+d1_bun_min,labs,T2_first_24h,0.60512,0.59625,0.61651,0.00738,False
+d1_creatinine_min,labs,T2_first_24h,0.60118,0.59304,0.60658,0.00472,False
+creatinine_apache,APACHE covariate,T3_apache_24h,0.59705,0.59033,0.60348,0.00483,False
+age,demographic,T0_pre_icu,0.58311,0.57595,0.59349,0.00621,False
+d1_potassium_max,labs,T2_first_24h,0.56868,0.55598,0.58153,0.0081,False
+d1_sodium_min,labs,T2_first_24h,0.55534,0.54607,0.56246,0.00635,False
+d1_hemaglobin_max,labs,T2_first_24h,0.5543,0.54753,0.56074,0.00448,False
+d1_hemaglobin_min,labs,T2_first_24h,0.55009,0.54365,0.55332,0.00353,False
+d1_hematocrit_max,labs,T2_first_24h,0.54743,0.54294,0.55277,0.0039,False
+d1_sysbp_noninvasive_max,vitals,T2_first_24h,0.54778,0.54068,0.56037,0.00669,False
+sodium_apache,APACHE covariate,T3_apache_24h,0.5483,0.53371,0.55668,0.00911,False
+d1_sysbp_max,vitals,T2_first_24h,0.54722,0.54078,0.56026,0.00678,False
+d1_hematocrit_min,labs,T2_first_24h,0.5451,0.5416,0.5477,0.00282,False
+pre_icu_los_days,demographic,T0_pre_icu,0.5166,0.51358,0.51976,0.00218,False
+elective_surgery,demographic,T0_pre_icu,0.50233,0.49441,0.50506,0.00403,False
+icu_stay_type,demographic,T0_pre_icu,0.49563,0.48536,0.50194,0.00578,False
+arf_apache,APACHE covariate,T3_apache_24h,0.52173,0.51936,0.52449,0.00201,False
