@@ -631,7 +631,7 @@ def main() -> None:
             ),
             technique="Domain/window taxonomy mapping and one-sided paired Wilcoxon test",
             parameters={"matched_pairs_n": len(deltas_tr), "alpha": 0.01, "alternative": "greater"},
-            assumptions=["Each h1_<stem> pairs 1-to-1 with d1_<stem>."],
+            assumptions=["Each h1_clinical_stem pairs 1-to-1 with d1_clinical_stem."],
             missing_data_policy="Explicit null rate over full Train and Unlabeled tables.",
             script_ref=script_ref,
             ev_type="N",

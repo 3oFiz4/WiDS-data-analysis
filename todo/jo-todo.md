@@ -214,6 +214,30 @@ I only assume these methods below from a single glimpse, and these methods origi
 
   > **#I16.1 (FALSE)**: Rejected (`- [no]`)—adding `stratum_z` (`0.85321`, `Δ=-0.00023`) or unsupervised `hosp_cov_rel` (`0.85266`, `Δ=-0.00077`) degraded `fe_ABCD` (`0.85344`).
 
-- [ ] **Baseline Model & Validation Pipeline Verification**
+- [x] **Baseline Model & Validation Pipeline Verification**
 
-> Before heavy feature selection or tuning, run a fast baseline (e.g., LightGBM/XGBoost with `StratifiedGroupKFold(groups=hospital_id)`) to establish a leak-free CV ROC-AUC benchmark, inspect permutation/SHAP feature importances, and verify that every data cleaning and engineering step actually improves out-of-hospital generalization.
+> **#I17 (TRUE), #I17.1 (TRUE), #I18 (TRUE), #I18.1 (TRUE) & #I18.2 (TRUE)**: Canonical 5-fold `StratifiedGroupKFold(groups=hospital_id)` on cleaned+engineered `fe_ABCD` achieved **`0.85520`** ROC-AUC, **`0.61053`** PR-AUC, **`0.37072`** Log-Loss, **`0.11803`** Brier, and **`0.00650`** `ECE_10`, outperforming Raw Model A (`0.85139` AUC, `Δ=+0.00381`) and preprocessed `LogisticRegression` (`0.82983` AUC) while eliminating `+0.01624` AUC CV/ID optimism ([stage6_baseline_validation.md](../reports/findings/stage6_baseline_validation.md), [stage6_baseline_comparison.csv](../reports/findings/stage6_baseline_comparison.csv)).
+
+  - [x] **[I17] Sub-Analysis: `StratifiedKFold` (With & Without IDs) vs. `StratifiedGroupKFold(groups=hospital_id)` Optimism**
+
+  > **#I17 (TRUE)**: Random 5-fold `StratifiedKFold` inflated `fe_ABCD` ROC-AUC to `0.87144` with facility IDs (`Δ_naive = +0.01624`) and `0.86127` even after dropping IDs (`Δ_split = +0.00607`, Log-Loss `0.36431` vs `0.37072`).
+
+  - [no] **Trust Random `StratifiedKFold` CV (Even After Dropping `hospital_id`/`icu_id`)**
+
+  > **Rejected (`- [no]`)**: Even with `hospital_id` and `icu_id` dropped, patient stratification across shared hospital distributions leaks `+0.00607` ROC-AUC optimism vs unseen-hospital `StratifiedGroupKFold`.
+
+  - [x] **[I17.1] Sub-Analysis: Non-Linear `HistGradientBoostingClassifier` vs. `LogisticRegression` & Linear Blend**
+
+  > **#I17.1 (TRUE)**: Non-linear `HGB` (`0.85520`) outperformed collinearity-pruned, imputed `LogisticRegression` (`0.82983`, `ECE_10=0.02895`) by `+0.02537` ROC-AUC (`-0.03400` Log-Loss); an `85% HGB + 15% LogReg` blend reached `0.85561` AUC (`0.37107` Log-Loss).
+
+  - [x] **[I18] Sub-Analysis: Raw Model A vs. Engineered `fe_ABCD` Model B & Duplicate Sensitivity**
+
+  > **#I18 (TRUE)**: `fe_ABCD` delivered `+0.00381` ROC-AUC, `+0.00672` PR-AUC, `-0.00386` Log-Loss, and `-0.00115` Brier over Raw Model A; dropping all `8` redundant `hospital_id=167` rows yielded `0.85521` AUC (`|Δ| = 0.00001`). Top permutation drivers: `d1_glucose_max` (`0.06809`), `d1_glucose_range` (`0.02060`), `age` (`0.01100`), `apache_3j_diagnosis_te` (`0.00682`), `glucose_apache` (`0.00627`).
+
+  - [x] **[I18.1] Sub-Analysis: Cross-Hospital AUC Generalization, Calibration & Unlabeled Alignment**
+
+  > **#I18.1 (TRUE)**: Across `181` evaluable hospitals (`n>=30, pos>=5, neg>=5`), median AUC was `0.86789` (IQR `0.05473`) with `95.03%` (`>= 0.7500`); Train OOF (`mean=0.21669`) and Unlabeled 5-fold ensemble (`mean=0.20900`) aligned at `KS = 0.01638`. Raw HGB Log-Loss (`0.37072`) beat nested Platt (`0.37091`) and Isotonic (`0.37123`).
+
+  - [x] **[I18.2] Sub-Analysis: End-to-End HMECVAS Master Registry & REGEXP Provenance Lint**
+
+  > **#I18.2 (TRUE)**: Validated all `38` inquiries (`I1`–`I18.2`) in [inquiries.yaml](../reports/findings/inquiries.yaml) and [hmecvas_master_registry.csv](../reports/findings/hmecvas_master_registry.csv): `0` `OPEN`, `0` placeholders, `0` invalid statuses/outcomes/hashes/commits/timestamps, `152` inline refs, `144` typed relationship edges.

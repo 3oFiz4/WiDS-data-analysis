@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -115,6 +116,26 @@ def make_inquiry(
     }
 
 
+_DOUBLE_QUOTE_RE = re.compile(
+    r"^(?:OPEN|TRUE|FALSE|INCONCLUSIVE|SKIPPED|"
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}))$"
+)
+
+
+class _HmecvasSafeDumper(yaml.SafeDumper):
+    """YAML dumper quoting status/outcome/timestamp strings with double quotes."""
+
+
+def _represent_hmecvas_str(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
+    """Emit double quotes around HMECVAS status/outcome/timestamp scalars."""
+    if _DOUBLE_QUOTE_RE.match(data):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+_HmecvasSafeDumper.add_representer(str, _represent_hmecvas_str)
+
+
 def upsert_inquiries(
     entries: list[dict[str, Any]],
     *,
@@ -139,6 +160,6 @@ def upsert_inquiries(
     doc["inquiries"] = [by_id[eid] for eid in order]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True),
+        yaml.dump(doc, Dumper=_HmecvasSafeDumper, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
